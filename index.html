@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+  </head>
+  <body>
+
+    <div id="lightningout"></div>
+
+    <script src="https://placemakersdev--dev.sandbox.my.site.com/lightningouttest/lightning/lightning.out.js"></script>
+    <script>
+      $Lightning.use(
+        'c:TradeSupportOrdersApp', 
+        function () {
+          
+          $Lightning.createComponent(
+            'c:tradeSupportOrders', 
+            {digitalId: 1234, orderNumber : 1234}, 
+            'lightningout', 
+            function (cmp) {
+              
+            }
+          );
+        },
+        'https://placemakersdev--dev.sandbox.my.site.com/lightningouttest' 
+      );
+    </script>
+  </body>
+</html>
