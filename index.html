@@ -8,23 +8,32 @@
 
     <div id="lightningout"></div>
 
-    <script src="https://mmc--test.sandbox.my.site.com/lightning/lightning.out.js"></script>
-    <script>
-      $Lightning.use(
-        'c:lightningFlowOut', 
-        function () {
-          
-          $Lightning.createComponent(
-            'c:lightningFlowContact', 
-            '', 
-            'lightningout', 
-            function (cmp) {
-              
-            }
-          );
-        },
-        'https://www.google.com' 
-      );
-    </script>
+    <script type="text/javascript" src="https://support.tradelink.com.au/lightning/lightning.out.js"></script>
+<script type="text/javascript">// <![CDATA[
+const handleFlowStateChange = (event) => {
+		console.log('Here handle callback events for the submit action');
+	};
+	$Lightning.use(
+		"c:lightningOutFlow",
+		function () {
+			$Lightning.createComponent(
+				"c:lightningFlow",
+				{
+					flowName: "Web_Contact_Form",//do not change this
+					title: " ", //you can change this or to remove add a blank space
+				},
+				"lightning",
+				function (cmp) {
+					$A.eventService.addHandler({
+						event: "c:flowStateChangeEvent",
+						handler: handleFlowStateChange
+					});
+				}
+			);
+		},
+		"https://support.tradelink.com.au"
+	);
+// ]]></script>
+    
   </body>
 </html>
