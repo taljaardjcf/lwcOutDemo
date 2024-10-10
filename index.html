@@ -9,10 +9,11 @@
     <div id="lightningout"></div>
 
     <script type="text/javascript" src="https://mmc--test.sandbox.my.site.com/lightning/lightning.out.js"></script>
-<script type="text/javascript">
-const handleFlowStateChange = (event) => {
+    <script type="text/javascript">
+	const handleFlowStateChange = (event) => {
 		console.log('Here handle callback events for the submit action');
 	};
+	
 	$Lightning.use(
 		"c:lightningOutFlow",
 		function () {
@@ -22,7 +23,7 @@ const handleFlowStateChange = (event) => {
 					flowName: "Web_Contact_Form",//do not change this
 					title: " ", //you can change this or to remove add a blank space
 				},
-				"lightningout",
+				"lightningout",//the div id where to inject this script/component
 				function (cmp) {
 					$A.eventService.addHandler({
 						event: "c:flowStateChangeEvent",
