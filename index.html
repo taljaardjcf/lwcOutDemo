@@ -13,6 +13,8 @@
 	const handleFlowStateChange = (event) => {
 		console.log('Here handle callback events for the submit action');
 		console.log('******* ' , JSON.stringify(event));
+		console.log('******* interviewStatus' , event.gc.detail._params.interviewStatus);
+
 	};
 	
 	$Lightning.use(
