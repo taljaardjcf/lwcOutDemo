@@ -88,6 +88,7 @@
 
 // Call the waitForElement function before initializing the Lightning component
 waitForElement("lightningout", function () {
+	console.log('>>>>>> running lwc injection');
     $Lightning.use(
         "c:publicForms",
         function () {
