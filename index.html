@@ -3,121 +3,85 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Demo Lightning Out with Flow Form 1</title>
   </head>
+
   <body>
-<H1>Demo Lightning Out with Flow Form 1</H1>
+    <h1>Demo Lightning Out with Flow Form 1</h1>
+
     <div id="lightningout"></div>
 
-    <script src="https://mmc--test.sandbox.my.site.com/publicforms/lightning/lightning.out.js"></script>
+    <script src="warranty2amartfurniture--amartdevp2.sandbox.my.salesforce-sites.com/posactions/lightning/lightning.out.js"></script>
     <script>
-	/*const handleFlowStateChange = (event) => {
-		console.log('Here handle callback events for the submit action');
-		console.log('******* ' , JSON.stringify(event));
-		console.log('******* interviewStatus' , event.gc.detail._params.interviewStatus);
-		
+      // Handle Flow state/status changes (custom event from your component/event)
+      const handleFlowStateChange = (event) => {
+        const interviewStatus = event?.gc?.detail?._params?.interviewStatus;
 
-	};*/
-
-	    const handleFlowStateChange = (event) => {
-    console.log('Here handle callback events for the submit action');
-    console.log('******* ', JSON.stringify(event));
-
-    const interviewStatus = event.gc.detail._params.interviewStatus;
-    console.log('******* interviewStatus', interviewStatus);
-
-    switch (interviewStatus) {
-        case 'STARTED':
-            console.log('Interview process has started.');
-            // Add any logic specific to when the interview has started
+        switch (interviewStatus) {
+          case "STARTED":
+            console.log("Interview process has started.");
             break;
 
-        case 'FINISHED':
-            console.log('Interview process has finished.');
-            // Add any logic specific to when the interview has finished
+          case "FINISHED":
+            console.log("Interview process has finished.");
             break;
 
-        case 'ERROR':
-            console.error('An error occurred during the interview process.');
-            // Add any logic specific to when an error occurs
+          case "ERROR":
+            console.error("An error occurred during the interview process.");
             break;
 
-        default:
-            console.warn('Unknown interview status:', interviewStatus);
-            // Handle unexpected status values
-    }
-};
+          default:
+            console.warn("Unknown interview status:", interviewStatus);
+        }
+      };
 
-	
-	/*$Lightning.use(
-		"c:publicForms",
-		function () {
-			$Lightning.createComponent(
-				"c:lightningFlowContact",
-				{
-					flowName: "Web_Contact_Form",//do not change this
-					title: " ", //you can change this or to remove add a blank space
-					inputVariables : [
-						{
-						  name : "Type",
-						  type : "String",
-						  value : "Enquiry"
-						}
-						]
-				},
-				"lightningout",//the div id where to inject this script/component
-				function (cmp) {
-					$A.eventService.addHandler({
-						event: "c:flowStateChangeEvent",
-						handler: handleFlowStateChange
-					});
-				}
-			);
-		},
-		"https://mmc--test.sandbox.my.site.com/publicforms"
-	); */
+      // Utility: wait for DOM element to exist before Lightning Out injection
+      function waitForElement(elementId, callback) {
+        const el = document.getElementById(elementId);
+        if (el) {
+          callback();
+        } else {
+          setTimeout(() => waitForElement(elementId, callback), 100);
+        }
+      }
 
-	    function waitForElement(selector, callback) {
-    const element = document.getElementById(selector);
-    if (element) {
-        callback();
-    } else {
-        // Retry after a short delay
-        setTimeout(() => waitForElement(selector, callback), 100);
-    }
-}
+      // Initialize Lightning Out only after #lightningout is present
+      waitForElement("lightningout", function () {
 
-// Call the waitForElement function before initializing the Lightning component
-waitForElement("lightningout", function () {
-	console.log('>>>>>> running lwc injection');
-    $Lightning.use(
-        "c:publicForms",
-        function () {
+        $Lightning.use(
+          "c:posActions",
+          function () {
             $Lightning.createComponent(
-                "c:lightningFlowContact",
-                {
-                    flowName: "Web_Contact_Form", // do not change this
-                    title: " ", // you can change this or to remove add a blank space
-                    inputVariables: [
-                        {
-                            name: "Type",
-                            type: "String",
-                            value: "Enquiry"
-                        }
-                    ]
-                },
-                "lightningout", // the div id where to inject this script/component
-                function (cmp) {
-                    $A.eventService.addHandler({
-                        event: "c:flowStateChangeEvent",
-                        handler: handleFlowStateChange
-                    });
-                }
+              "c:POSActionsHost",
+              {
+                flowName: "StoreConnect_POS_Actions", // do not change this
+                title: " ", // use a blank space to effectively hide the title
+                inputVariables: [
+                  {
+                    name: "recordId",
+                    type: "String",
+                    value: "1231454654654",
+                  },
+				  {
+                    name: "userType",
+                    type: "String",
+                    value: "Manager",
+                  },
+                ],
+              },
+              "lightningout", // div id where to inject this component
+              function (cmp) {
+                // Listen for your custom flow status event
+                $A.eventService.addHandler({
+                  event: "c:flowStateChangeEvent",
+                  handler: handleFlowStateChange,
+                });
+              }
             );
-        },
-        "https://mmc--test.sandbox.my.site.com/publicforms"
-    );
-});
-
-   </script>
+          },
+          "https://warranty2amartfurniture--amartdevp2.sandbox.my.salesforce-sites.com/posactions"
+        );
+      });
+    </script>
   </body>
 </html>
