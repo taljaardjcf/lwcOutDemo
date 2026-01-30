@@ -19,16 +19,39 @@
       .ok { color: #0a7; }
       .err { color: #c00; }
       .muted { color: #666; }
+      .fieldRow { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+      label { font-size: 12px; color: #444; display: block; margin-bottom: 4px; }
+      input { padding: 8px 10px; min-width: 260px; }
+      .hint { font-size: 12px; color: #666; margin-top: 6px; }
     </style>
   </head>
 
   <body>
     <h1>Lightning Out 2.0 POC (GitHub Pages)</h1>
 
+    <div class="row fieldRow">
+      <div>
+        <label for="recordId">recordId (Flow input)</label>
+        <input id="recordId" placeholder="e.g. 001..." />
+      </div>
+      <div>
+        <label for="userType">userType (Flow input)</label>
+        <input id="userType" placeholder="e.g. Staff / Customer" />
+      </div>
+      <div>
+        <label for="userSfId">userSfId (Flow input)</label>
+        <input id="userSfId" placeholder="e.g. 005..." />
+      </div>
+    </div>
+
     <div class="row">
       <button id="loginBtn">Login to Salesforce</button>
-      <button id="clearBtn" title="Clears pkce verifier + token cache">Clear Local State</button>
+      <button id="clearBtn" title="Clears pkce verifier + log">Clear Local State</button>
       <span id="status" class="muted"></span>
+      <div class="hint">
+        Note: Your old Aura component (<code>pos-actions-host</code>) will NOT render in Lightning Out 2.0.
+        Use <code>&lt;pos-actions-host-lwc&gt;</code> to run the Flow in LO2.
+      </div>
     </div>
 
     <div class="row">
@@ -36,23 +59,26 @@
       <pre id="log"></pre>
     </div>
 
-    <!-- Lightning Out 2.0 host -->
+    <!-- Lightning Out 2.0 host (MATCH YOUR GENERATED SNIPPET) -->
     <lightning-out-application
       id="loApp"
       app-id="1Us9n00000000mPCAQ"
-      components="c-pos-actions-host,flow-state-change-event,report-viewer-v2,sosl-flow-search,pos-actions-buttons"
+      components="pos-actions-host,flow-state-change-event,report-viewer-v2,sosl-flow-search,pos-actions-buttons,pos-actions-host-lwc"
     ></lightning-out-application>
 
-    <!-- Components (keep these aligned with your generated snippet) -->
-    <c-pos-actions-host></c-pos-actions-host>
+    <!-- Components (MATCH YOUR GENERATED SNIPPET) -->
+    <pos-actions-host></pos-actions-host>
     <flow-state-change-event></flow-state-change-event>
     <report-viewer-v2></report-viewer-v2>
     <sosl-flow-search></sosl-flow-search>
     <pos-actions-buttons></pos-actions-buttons>
 
+    <!-- This is your NEW LWC flow host -->
+    <pos-actions-host-lwc id="posHost"></pos-actions-host-lwc>
+
     <script>
       /**********************************************************************
-       * CONFIG (edit these if needed)
+       * CONFIG
        **********************************************************************/
       const SF_BASE = "https://warranty2amartfurniture--amartuat.sandbox.my.salesforce.com";
 
@@ -61,11 +87,13 @@
         "3MVG9F.30f8SspDryqeWgfLKZmasLpvzBp6QA1sfqDljMQybgmTuLeXnbaxAkJT5Q66qI3w69nvL0_Nk_eX1c";
 
       // IMPORTANT: Must EXACTLY match the Callback URL configured in the External Client App.
-      // If your callback is .../index.html then set it exactly to that.
       const REDIRECT_URI = "https://taljaardjcf.github.io/lwcOutDemo/";
 
       // POC scopes (you can reduce later)
       const SCOPES = "web full";
+
+      // Your flow API name
+      const FLOW_API_NAME = "StoreConnect_POS_Actions";
 
       /**********************************************************************
        * UI helpers
@@ -73,7 +101,9 @@
       const logEl = document.getElementById("log");
       const statusEl = document.getElementById("status");
       function log(...args) {
-        const line = args.map((a) => (typeof a === "string" ? a : JSON.stringify(a, null, 2))).join(" ");
+        const line = args
+          .map((a) => (typeof a === "string" ? a : JSON.stringify(a, null, 2)))
+          .join(" ");
         logEl.textContent += line + "\n";
         logEl.scrollTop = logEl.scrollHeight;
         console.log(...args);
@@ -81,6 +111,14 @@
       function setStatus(msg, cls) {
         statusEl.className = cls || "muted";
         statusEl.textContent = msg;
+      }
+
+      function getInputs() {
+        return {
+          recordId: document.getElementById("recordId").value || "",
+          userType: document.getElementById("userType").value || "",
+          userSfId: document.getElementById("userSfId").value || "",
+        };
       }
 
       /**********************************************************************
@@ -137,7 +175,8 @@
       async function exchangeCodeForToken(code) {
         log("Exchanging code for token...");
         const verifier = sessionStorage.getItem("pkce_verifier");
-        if (!verifier) throw new Error("Missing PKCE verifier in sessionStorage. Click 'Login' again.");
+        if (!verifier)
+          throw new Error("Missing PKCE verifier in sessionStorage. Click 'Login' again.");
 
         const body = new URLSearchParams({
           grant_type: "authorization_code",
@@ -167,7 +206,7 @@
       async function getFrontdoorUrl(accessToken, appId) {
         log("Requesting frontdoor URL via lightningoutsingleaccess...");
 
-        // NOTE: Some orgs expect different param naming. We try app_id first.
+        // Some orgs use different param names; app_id is the first try.
         const params = new URLSearchParams({ app_id: appId });
 
         const resp = await fetch(`${SF_BASE}/services/oauth2/lightningoutsingleaccess`, {
@@ -190,12 +229,16 @@
       }
 
       /**********************************************************************
-       * Lightning Out events (useful for debugging)
+       * Lightning Out / Flow events
        **********************************************************************/
-      function wireLoEvents() {
+      function wireEvents() {
+        // LO 2.0 lifecycle events
         document.addEventListener("lo.application.ready", () => {
           log("EVENT: lo.application.ready");
           setStatus("Lightning Out application ready ✅", "ok");
+
+          // Once LO is ready, set attributes on your LWC host so it can start the Flow.
+          applyFlowInputsToHost();
         });
 
         document.addEventListener("lo.application.error", (e) => {
@@ -211,20 +254,60 @@
           log("EVENT: lo.component.error", e?.detail || e);
           setStatus("Lightning Out component error ❌ (see log)", "err");
         });
+
+        // Your LWC should dispatch this DOM event (CustomEvent) from inside handleStatusChange()
+        // Example: this.dispatchEvent(new CustomEvent('flowstatechange', { detail: { interviewStatus }, bubbles:true, composed:true }))
+        document.addEventListener("flowstatechange", (event) => {
+          const interviewStatus = event?.detail?.interviewStatus;
+          log("EVENT: flowstatechange ->", interviewStatus || "(no status)");
+        });
+      }
+
+      function applyFlowInputsToHost() {
+        const host = document.getElementById("posHost");
+        if (!host) {
+          log("WARN: pos-actions-host-lwc element not found yet.");
+          return;
+        }
+
+        const { recordId, userType, userSfId } = getInputs();
+
+        // These attribute names map to @api properties in your LWC:
+        // flowApiName -> flow-api-name
+        // recordId    -> record-id
+        // userType    -> user-type
+        // userSfId    -> user-sf-id
+        host.setAttribute("flow-api-name", FLOW_API_NAME);
+        host.setAttribute("title", " "); // keep same behavior as Aura host
+        host.setAttribute("record-id", recordId);
+        host.setAttribute("user-type", userType);
+        host.setAttribute("user-sf-id", userSfId);
+
+        log("Applied Flow inputs to <pos-actions-host-lwc>:", { FLOW_API_NAME, recordId, userType, userSfId });
       }
 
       /**********************************************************************
        * Main
        **********************************************************************/
       async function main() {
-        wireLoEvents();
+        wireEvents();
 
         document.getElementById("loginBtn").addEventListener("click", startLogin);
+
         document.getElementById("clearBtn").addEventListener("click", () => {
           sessionStorage.removeItem("pkce_verifier");
           logEl.textContent = "";
           setStatus("Cleared local state.", "muted");
           log("Cleared pkce_verifier + log.");
+        });
+
+        // If user changes inputs after LO is ready, let them re-apply without re-login
+        ["recordId", "userType", "userSfId"].forEach((id) => {
+          document.getElementById(id).addEventListener("change", () => {
+            // Only apply if LO already bootstrapped (frontdoor-url set)
+            const loApp = document.getElementById("loApp");
+            if (loApp?.getAttribute("frontdoor-url")) applyFlowInputsToHost();
+          });
         });
 
         setStatus("Ready. Click 'Login to Salesforce'.", "muted");
