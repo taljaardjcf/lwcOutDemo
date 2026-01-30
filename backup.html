@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Demo Lightning Out with Flow Form 1</title>
+  </head>
+
+  <body>
+    <h1>Demo Lightning Out with Flow Form 1</h1>
+
+    <div id="lightningout"></div>
+
+    <script src="https://warranty2amartfurniture--amartuat.sandbox.my.salesforce-sites.com/posactions/lightning/lightning.out.js"></script>
+    <script>
+      // Handle Flow state/status changes (custom event from your component/event)
+      const handleFlowStateChange = (event) => {
+        const interviewStatus = event?.gc?.detail?._params?.interviewStatus;
+
+        switch (interviewStatus) {
+          case "STARTED":
+            console.log("Interview process has started.");
+            break;
+
+          case "FINISHED":
+            console.log("Interview process has finished.");
+            break;
+
+          case "ERROR":
+            console.error("An error occurred during the interview process.");
+            break;
+
+          default:
+            console.warn("Unknown interview status:", interviewStatus);
+        }
+      };
+
+      // Utility: wait for DOM element to exist before Lightning Out injection
+      function waitForElement(elementId, callback) {
+        const el = document.getElementById(elementId);
+        if (el) {
+          callback();
+        } else {
+          setTimeout(() => waitForElement(elementId, callback), 100);
+        }
+      }
+
+      // Initialize Lightning Out only after #lightningout is present
+      waitForElement("lightningout", function () {
+
+        $Lightning.use(
+          "c:posActions",
+          function () {
+            $Lightning.createComponent(
+              "c:POSActionsHost",
+              {
+                flowApiName: "StoreConnect_POS_Actions", // do not change this
+                title: " ", // use a blank space to effectively hide the title
+                inputVariables: [
+                  {
+                    name: "recordId",
+                    type: "String",
+                    value: "",
+                  },
+				  {
+                    name: "userType",
+                    type: "String",
+                    value: "",
+                  },
+					{
+                    name: "userSfId",
+                    type: "String",
+                    value: "",
+                  },
+                ],
+              },
+              "lightningout", // div id where to inject this component
+              function (cmp) {
+                // Listen for your custom flow status event
+                $A.eventService.addHandler({
+                  event: "c:flowStateChangeEvent",
+                  handler: handleFlowStateChange,
+                });
+              }
+            );
+          },
+          "https://warranty2amartfurniture--amartuat.sandbox.my.salesforce-sites.com/posactions"
+        );
+      });
+    </script>
+  </body>
+</html>
