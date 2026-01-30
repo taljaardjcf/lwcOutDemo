@@ -1,92 +1,150 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html>
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Demo Lightning Out with Flow Form 1</title>
+    <title>Lightning Out 2.0 POC</title>
+
+    <!-- LO 2.0 library -->
+    <script async src="https://warranty2amartfurniture--amartuat.sandbox.my.salesforce.com/lightning/lightning.out.latest/index.iife.prod.js"></script>
   </head>
-
   <body>
-    <h1>Demo Lightning Out with Flow Form 1</h1>
+    <h1>Lightning Out 2.0 POC</h1>
 
-    <div id="lightningout"></div>
+    <lightning-out-application
+      id="loApp"
+      app-id="1Us9n00000000mPCAQ"
+      components="c-pos-actions-host"
+    ></lightning-out-application>
 
-    <script src="https://warranty2amartfurniture--amartuat.sandbox.my.salesforce-sites.com/posactions/lightning/lightning.out.js"></script>
+    <c-pos-actions-host></c-pos-actions-host>
+
     <script>
-      // Handle Flow state/status changes (custom event from your component/event)
-      const handleFlowStateChange = (event) => {
-        const interviewStatus = event?.gc?.detail?._params?.interviewStatus;
+      const SF_BASE = "https://warranty2amartfurniture--amartuat.sandbox.my.salesforce.com";
+      const CLIENT_ID = "3MVG9F.30f8SspDryqeWgfLKZmasLpvzBp6QA1sfqDljMQybgmTuLeXnbaxAkJT5Q66qI3w69nvL0_Nk_eX1c";
+      const REDIRECT_URI = window.location.origin + window.location.pathname;
+      const SCOPES = "web full"; // POC only
 
-        switch (interviewStatus) {
-          case "STARTED":
-            console.log("Interview process has started.");
-            break;
-
-          case "FINISHED":
-            console.log("Interview process has finished.");
-            break;
-
-          case "ERROR":
-            console.error("An error occurred during the interview process.");
-            break;
-
-          default:
-            console.warn("Unknown interview status:", interviewStatus);
-        }
-      };
-
-      // Utility: wait for DOM element to exist before Lightning Out injection
-      function waitForElement(elementId, callback) {
-        const el = document.getElementById(elementId);
-        if (el) {
-          callback();
-        } else {
-          setTimeout(() => waitForElement(elementId, callback), 100);
-        }
+      // ---- PKCE helpers ----
+      function base64UrlEncode(arrayBuffer) {
+        const bytes = new Uint8Array(arrayBuffer);
+        let str = "";
+        for (const b of bytes) str += String.fromCharCode(b);
+        return btoa(str).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
       }
 
-      // Initialize Lightning Out only after #lightningout is present
-      waitForElement("lightningout", function () {
+      async function sha256(text) {
+        const enc = new TextEncoder().encode(text);
+        return await crypto.subtle.digest("SHA-256", enc);
+      }
 
-        $Lightning.use(
-          "c:posActions",
-          function () {
-            $Lightning.createComponent(
-              "c:POSActionsHost",
-              {
-                flowApiName: "StoreConnect_POS_Actions", // do not change this
-                title: " ", // use a blank space to effectively hide the title
-                inputVariables: [
-                  {
-                    name: "recordId",
-                    type: "String",
-                    value: "",
-                  },
-				  {
-                    name: "userType",
-                    type: "String",
-                    value: "",
-                  },
-					{
-                    name: "userSfId",
-                    type: "String",
-                    value: "",
-                  },
-                ],
-              },
-              "lightningout", // div id where to inject this component
-              function (cmp) {
-                // Listen for your custom flow status event
-                $A.eventService.addHandler({
-                  event: "c:flowStateChangeEvent",
-                  handler: handleFlowStateChange,
-                });
-              }
-            );
+      function randomString(len = 64) {
+        const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
+        const arr = new Uint8Array(len);
+        crypto.getRandomValues(arr);
+        return Array.from(arr, (x) => chars[x % chars.length]).join("");
+      }
+
+      function getQueryParam(name) {
+        return new URLSearchParams(window.location.search).get(name);
+      }
+
+      // ---- OAuth: start auth code + PKCE ----
+      async function startLogin() {
+        const verifier = randomString(96);
+        sessionStorage.setItem("pkce_verifier", verifier);
+
+        const challenge = base64UrlEncode(await sha256(verifier));
+
+        const authUrl =
+          `${SF_BASE}/services/oauth2/authorize` +
+          `?response_type=code` +
+          `&client_id=${encodeURIComponent(CLIENT_ID)}` +
+          `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
+          `&scope=${encodeURIComponent(SCOPES)}` +
+          `&code_challenge=${encodeURIComponent(challenge)}` +
+          `&code_challenge_method=S256`;
+
+        window.location.href = authUrl;
+      }
+
+      async function exchangeCodeForToken(code) {
+        const verifier = sessionStorage.getItem("pkce_verifier");
+        if (!verifier) throw new Error("Missing PKCE verifier in sessionStorage.");
+
+        const body = new URLSearchParams({
+          grant_type: "authorization_code",
+          client_id: CLIENT_ID,
+          redirect_uri: REDIRECT_URI,
+          code,
+          code_verifier: verifier,
+        });
+
+        const resp = await fetch(`${SF_BASE}/services/oauth2/token`, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body,
+        });
+
+        if (!resp.ok) throw new Error("Token exchange failed: " + (await resp.text()));
+        return await resp.json();
+      }
+
+      // ---- LO2: exchange access token for frontdoor URL ----
+      async function getFrontdoorUrl(accessToken, appId) {
+        // Endpoint name is per LO 2.0 auth docs (response contains frontdoor_uri). :contentReference[oaicite:8]{index=8}
+        const resp = await fetch(`${SF_BASE}/services/oauth2/lightningoutsingleaccess`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            Authorization: `Bearer ${accessToken}`,
           },
-          "https://warranty2amartfurniture--amartuat.sandbox.my.salesforce-sites.com/posactions"
-        );
-      });
+          body: new URLSearchParams({
+            // This is the common pattern for Salesforce singleaccess-style endpoints:
+            // you provide access_token context + the app id to scope it to LO2 resources.
+            // If your org returns an error about params, tell me the error body and I’ll adjust.
+            app_id: appId,
+          }),
+        });
+
+        if (!resp.ok) throw new Error("frontdoor exchange failed: " + (await resp.text()));
+        const json = await resp.json();
+        if (!json.frontdoor_uri) throw new Error("No frontdoor_uri in response: " + JSON.stringify(json));
+        return json.frontdoor_uri;
+      }
+
+      function wireLoEvents() {
+        // LO 2.0 lifecycle events per docs :contentReference[oaicite:9]{index=9}
+        document.addEventListener("lo.application.ready", () => console.log("LO app ready"));
+        document.addEventListener("lo.application.error", (e) => console.error("LO app error", e.detail));
+        document.addEventListener("lo.component.ready", (e) => console.log("LO component ready", e.detail));
+        document.addEventListener("lo.component.error", (e) => console.error("LO component error", e.detail));
+      }
+
+      async function main() {
+        wireLoEvents();
+
+        const code = getQueryParam("code");
+        if (!code) {
+          // First load - begin OAuth login
+          return startLogin();
+        }
+
+        // Exchange code for access token
+        const token = await exchangeCodeForToken(code);
+
+        // Remove ?code=... from URL for cleanliness
+        window.history.replaceState({}, document.title, REDIRECT_URI);
+
+        // Fetch frontdoor URL and set it on lightning-out-application
+        const loApp = document.getElementById("loApp");
+        const appId = loApp.getAttribute("app-id");
+        const frontdoor = await getFrontdoorUrl(token.access_token, appId);
+
+        loApp.setAttribute("frontdoor-url", frontdoor);
+        console.log("Set frontdoor-url:", frontdoor);
+      }
+
+      main().catch((e) => console.error(e));
     </script>
   </body>
 </html>
