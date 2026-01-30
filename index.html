@@ -19,38 +19,77 @@
       .ok { color: #0a7; }
       .err { color: #c00; }
       .muted { color: #666; }
-      .fieldRow { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+      .fieldRow { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
       label { font-size: 12px; color: #444; display: block; margin-bottom: 4px; }
-      input { padding: 8px 10px; min-width: 260px; }
+      input, textarea, select { padding: 8px 10px; min-width: 260px; }
+      textarea { min-width: 640px; width: 100%; height: 92px; }
       .hint { font-size: 12px; color: #666; margin-top: 6px; }
+      .card { border: 1px solid #ddd; border-radius: 8px; padding: 12px; background: #fff; }
+      code { background: #f2f2f2; padding: 2px 6px; border-radius: 6px; }
     </style>
   </head>
 
   <body>
     <h1>Lightning Out 2.0 POC (GitHub Pages)</h1>
 
-    <div class="row fieldRow">
-      <div>
-        <label for="recordId">recordId (Flow input)</label>
-        <input id="recordId" placeholder="e.g. 001..." />
+    <div class="row card">
+      <div class="fieldRow">
+        <div>
+          <label for="recordId">recordId (Flow input)</label>
+          <input id="recordId" placeholder="e.g. 001..." />
+        </div>
+        <div>
+          <label for="userType">userType (Flow input)</label>
+          <input id="userType" placeholder="e.g. Staff / Customer" />
+        </div>
+        <div>
+          <label for="userSfId">userSfId (Flow input)</label>
+          <input id="userSfId" placeholder="e.g. 005..." />
+        </div>
       </div>
-      <div>
-        <label for="userType">userType (Flow input)</label>
-        <input id="userType" placeholder="e.g. Staff / Customer" />
-      </div>
-      <div>
-        <label for="userSfId">userSfId (Flow input)</label>
-        <input id="userSfId" placeholder="e.g. 005..." />
-      </div>
-    </div>
 
-    <div class="row">
-      <button id="loginBtn">Login to Salesforce</button>
-      <button id="clearBtn" title="Clears pkce verifier + log">Clear Local State</button>
-      <span id="status" class="muted"></span>
       <div class="hint">
         Note: Your old Aura component (<code>pos-actions-host</code>) will NOT render in Lightning Out 2.0.
         Use <code>&lt;pos-actions-host-lwc&gt;</code> to run the Flow in LO2.
+      </div>
+    </div>
+
+    <div class="row card">
+      <div class="fieldRow">
+        <div>
+          <label for="authMode">Auth mode</label>
+          <select id="authMode">
+            <option value="pkce">PKCE Login (browser)</option>
+            <option value="token">Use Server Access Token (paste)</option>
+            <option value="frontdoor">Use Frontdoor URL (paste)</option>
+          </select>
+        </div>
+
+        <div>
+          <button id="loginBtn">Login to Salesforce</button>
+          <button id="useTokenBtn">Use Server Token</button>
+          <button id="useFrontdoorBtn">Use Frontdoor URL</button>
+          <button id="clearBtn" title="Clears pkce verifier + log">Clear Local State</button>
+          <span id="status" class="muted"></span>
+        </div>
+      </div>
+
+      <div class="row" id="tokenPanel" style="display:none;">
+        <label for="serverToken">Server OAuth Access Token (Bearer token)</label>
+        <textarea id="serverToken" placeholder="Paste OAuth access_token here (no 'Bearer ' prefix needed)"></textarea>
+        <div class="hint">
+          This token should be a Salesforce OAuth <code>access_token</code> minted by your server as the system user.
+          The page will call <code>/services/oauth2/lightningoutsingleaccess</code> using this token.
+        </div>
+      </div>
+
+      <div class="row" id="frontdoorPanel" style="display:none;">
+        <label for="frontdoorUrl">Frontdoor URL (if your server already returns it)</label>
+        <textarea id="frontdoorUrl" placeholder="Paste the frontdoor_uri here (full URL)"></textarea>
+        <div class="hint">
+          If your server already calls <code>lightningoutsingleaccess</code>, you can paste the returned <code>frontdoor_uri</code> here
+          and skip token handling entirely.
+        </div>
       </div>
     </div>
 
@@ -67,13 +106,15 @@
     ></lightning-out-application>
 
     <!-- Components (MATCH YOUR GENERATED SNIPPET) -->
+    <!-- Aura tag included because Salesforce generated it; it won't render in LO2 -->
     <pos-actions-host></pos-actions-host>
+
     <flow-state-change-event></flow-state-change-event>
     <report-viewer-v2></report-viewer-v2>
     <sosl-flow-search></sosl-flow-search>
     <pos-actions-buttons></pos-actions-buttons>
 
-    <!-- This is your NEW LWC flow host -->
+    <!-- NEW LWC flow host -->
     <pos-actions-host-lwc id="posHost"></pos-actions-host-lwc>
 
     <script>
@@ -82,7 +123,7 @@
        **********************************************************************/
       const SF_BASE = "https://warranty2amartfurniture--amartuat.sandbox.my.salesforce.com";
 
-      // External Client App "Consumer Key" / Client Id
+      // External Client App "Consumer Key" / Client Id (only used for PKCE mode)
       const CLIENT_ID =
         "3MVG9F.30f8SspDryqeWgfLKZmasLpvzBp6QA1sfqDljMQybgmTuLeXnbaxAkJT5Q66qI3w69nvL0_Nk_eX1c";
 
@@ -100,6 +141,7 @@
        **********************************************************************/
       const logEl = document.getElementById("log");
       const statusEl = document.getElementById("status");
+
       function log(...args) {
         const line = args
           .map((a) => (typeof a === "string" ? a : JSON.stringify(a, null, 2)))
@@ -108,6 +150,7 @@
         logEl.scrollTop = logEl.scrollHeight;
         console.log(...args);
       }
+
       function setStatus(msg, cls) {
         statusEl.className = cls || "muted";
         statusEl.textContent = msg;
@@ -119,6 +162,10 @@
           userType: document.getElementById("userType").value || "",
           userSfId: document.getElementById("userSfId").value || "",
         };
+      }
+
+      function getQueryParam(name) {
+        return new URLSearchParams(window.location.search).get(name);
       }
 
       /**********************************************************************
@@ -143,15 +190,15 @@
         return Array.from(arr, (x) => chars[x % chars.length]).join("");
       }
 
-      function getQueryParam(name) {
-        return new URLSearchParams(window.location.search).get(name);
-      }
-
       /**********************************************************************
        * OAuth: auth code + PKCE
+       *
+       * NOTE: This will only work if your External Client App is configured
+       * as a "public client" for PKCE (i.e., it does NOT require client_secret
+       * at the token endpoint). If it requires a secret, use "Server Token" mode.
        **********************************************************************/
-      async function startLogin() {
-        setStatus("Starting OAuth login...", "muted");
+      async function startLoginPkce() {
+        setStatus("Starting OAuth login (PKCE)...", "muted");
         log("Starting OAuth login (Auth Code + PKCE)");
 
         const verifier = randomString(96);
@@ -172,11 +219,10 @@
         window.location.href = authUrl;
       }
 
-      async function exchangeCodeForToken(code) {
-        log("Exchanging code for token...");
+      async function exchangeCodeForTokenPkce(code) {
+        log("Exchanging code for token (PKCE)...");
         const verifier = sessionStorage.getItem("pkce_verifier");
-        if (!verifier)
-          throw new Error("Missing PKCE verifier in sessionStorage. Click 'Login' again.");
+        if (!verifier) throw new Error("Missing PKCE verifier in sessionStorage. Click 'Login' again.");
 
         const body = new URLSearchParams({
           grant_type: "authorization_code",
@@ -229,15 +275,50 @@
       }
 
       /**********************************************************************
-       * Lightning Out / Flow events
+       * Apply Flow inputs to your LWC host
+       * (Assumes your LWC has @api props: flowApiName, title, recordId, userType, userSfId)
+       **********************************************************************/
+      function applyFlowInputsToHost() {
+        const host = document.getElementById("posHost");
+        if (!host) {
+          log("WARN: pos-actions-host-lwc element not found yet.");
+          return;
+        }
+
+        const { recordId, userType, userSfId } = getInputs();
+
+        // Attribute names map to @api properties in your LWC:
+        // flowApiName -> flow-api-name
+        // recordId    -> record-id
+        // userType    -> user-type
+        // userSfId    -> user-sf-id
+        host.setAttribute("flow-api-name", FLOW_API_NAME);
+        host.setAttribute("title", " "); // keep same behavior as Aura host
+        host.setAttribute("record-id", recordId);
+        host.setAttribute("user-type", userType);
+        host.setAttribute("user-sf-id", userSfId);
+
+        log("Applied Flow inputs to <pos-actions-host-lwc>:", { FLOW_API_NAME, recordId, userType, userSfId });
+      }
+
+      /**********************************************************************
+       * Boot LO2 by setting frontdoor-url, then wait for LO ready event
+       **********************************************************************/
+      function bootstrapLoWithFrontdoor(frontdoorUrl) {
+        const loApp = document.getElementById("loApp");
+        loApp.setAttribute("frontdoor-url", frontdoorUrl);
+        log("Set frontdoor-url:", frontdoorUrl);
+        setStatus("frontdoor-url set. Waiting for LO ready event...", "muted");
+      }
+
+      /**********************************************************************
+       * Events
        **********************************************************************/
       function wireEvents() {
         // LO 2.0 lifecycle events
         document.addEventListener("lo.application.ready", () => {
           log("EVENT: lo.application.ready");
           setStatus("Lightning Out application ready ✅", "ok");
-
-          // Once LO is ready, set attributes on your LWC host so it can start the Flow.
           applyFlowInputsToHost();
         });
 
@@ -255,35 +336,26 @@
           setStatus("Lightning Out component error ❌ (see log)", "err");
         });
 
-        // Your LWC should dispatch this DOM event (CustomEvent) from inside handleStatusChange()
-        // Example: this.dispatchEvent(new CustomEvent('flowstatechange', { detail: { interviewStatus }, bubbles:true, composed:true }))
+        // Your LWC should dispatch a DOM event (CustomEvent) for flow status
+        // Example inside LWC:
+        // this.dispatchEvent(new CustomEvent('flowstatechange', { detail:{interviewStatus}, bubbles:true, composed:true }))
         document.addEventListener("flowstatechange", (event) => {
           const interviewStatus = event?.detail?.interviewStatus;
           log("EVENT: flowstatechange ->", interviewStatus || "(no status)");
         });
       }
 
-      function applyFlowInputsToHost() {
-        const host = document.getElementById("posHost");
-        if (!host) {
-          log("WARN: pos-actions-host-lwc element not found yet.");
-          return;
-        }
+      /**********************************************************************
+       * UI mode switching
+       **********************************************************************/
+      function syncAuthModeUi() {
+        const mode = document.getElementById("authMode").value;
+        document.getElementById("tokenPanel").style.display = mode === "token" ? "block" : "none";
+        document.getElementById("frontdoorPanel").style.display = mode === "frontdoor" ? "block" : "none";
 
-        const { recordId, userType, userSfId } = getInputs();
-
-        // These attribute names map to @api properties in your LWC:
-        // flowApiName -> flow-api-name
-        // recordId    -> record-id
-        // userType    -> user-type
-        // userSfId    -> user-sf-id
-        host.setAttribute("flow-api-name", FLOW_API_NAME);
-        host.setAttribute("title", " "); // keep same behavior as Aura host
-        host.setAttribute("record-id", recordId);
-        host.setAttribute("user-type", userType);
-        host.setAttribute("user-sf-id", userSfId);
-
-        log("Applied Flow inputs to <pos-actions-host-lwc>:", { FLOW_API_NAME, recordId, userType, userSfId });
+        document.getElementById("loginBtn").style.display = mode === "pkce" ? "inline-block" : "none";
+        document.getElementById("useTokenBtn").style.display = mode === "token" ? "inline-block" : "none";
+        document.getElementById("useFrontdoorBtn").style.display = mode === "frontdoor" ? "inline-block" : "none";
       }
 
       /**********************************************************************
@@ -291,8 +363,41 @@
        **********************************************************************/
       async function main() {
         wireEvents();
+        syncAuthModeUi();
 
-        document.getElementById("loginBtn").addEventListener("click", startLogin);
+        document.getElementById("authMode").addEventListener("change", syncAuthModeUi);
+
+        document.getElementById("loginBtn").addEventListener("click", startLoginPkce);
+
+        document.getElementById("useTokenBtn").addEventListener("click", async () => {
+          try {
+            const token = (document.getElementById("serverToken").value || "").trim();
+            if (!token) throw new Error("Please paste an access token first.");
+
+            setStatus("Using server token... requesting frontdoor URL", "muted");
+            const loApp = document.getElementById("loApp");
+            const appId = loApp.getAttribute("app-id");
+
+            const frontdoor = await getFrontdoorUrl(token, appId);
+            bootstrapLoWithFrontdoor(frontdoor);
+          } catch (e) {
+            log("FATAL:", e?.message || e, e);
+            setStatus("Fatal error ❌ (see log)", "err");
+          }
+        });
+
+        document.getElementById("useFrontdoorBtn").addEventListener("click", async () => {
+          try {
+            const fd = (document.getElementById("frontdoorUrl").value || "").trim();
+            if (!fd) throw new Error("Please paste a frontdoor URL first.");
+
+            setStatus("Using frontdoor URL...", "muted");
+            bootstrapLoWithFrontdoor(fd);
+          } catch (e) {
+            log("FATAL:", e?.message || e, e);
+            setStatus("Fatal error ❌ (see log)", "err");
+          }
+        });
 
         document.getElementById("clearBtn").addEventListener("click", () => {
           sessionStorage.removeItem("pkce_verifier");
@@ -301,50 +406,52 @@
           log("Cleared pkce_verifier + log.");
         });
 
-        // If user changes inputs after LO is ready, let them re-apply without re-login
+        // Re-apply inputs if user edits them after LO is bootstrapped
         ["recordId", "userType", "userSfId"].forEach((id) => {
           document.getElementById(id).addEventListener("change", () => {
-            // Only apply if LO already bootstrapped (frontdoor-url set)
             const loApp = document.getElementById("loApp");
             if (loApp?.getAttribute("frontdoor-url")) applyFlowInputsToHost();
           });
         });
 
-        setStatus("Ready. Click 'Login to Salesforce'.", "muted");
+        setStatus("Ready. Choose auth mode above.", "muted");
 
+        // If we returned from PKCE with ?code=..., complete the flow automatically.
         const code = getQueryParam("code");
         if (!code) {
-          log("No OAuth code in URL. Waiting for user to click Login.");
+          log("No OAuth code in URL.");
+          return;
+        }
+
+        // If the user selected a different mode, ignore the code return.
+        const mode = document.getElementById("authMode").value;
+        if (mode !== "pkce") {
+          log("OAuth code found but auth mode is not PKCE. Ignoring code.");
           return;
         }
 
         setStatus("OAuth code returned. Exchanging for token...", "muted");
         log("OAuth code found in URL.");
 
-        // Exchange code for access token
-        const token = await exchangeCodeForToken(code);
+        try {
+          const token = await exchangeCodeForTokenPkce(code);
 
-        // Clean the URL (remove code param)
-        window.history.replaceState({}, document.title, REDIRECT_URI);
+          // Clean the URL (remove code param)
+          window.history.replaceState({}, document.title, REDIRECT_URI);
 
-        setStatus("Getting frontdoor URL...", "muted");
+          setStatus("Getting frontdoor URL...", "muted");
+          const loApp = document.getElementById("loApp");
+          const appId = loApp.getAttribute("app-id");
 
-        const loApp = document.getElementById("loApp");
-        const appId = loApp.getAttribute("app-id");
-
-        const frontdoor = await getFrontdoorUrl(token.access_token, appId);
-
-        // Set frontdoor-url to bootstrap the LO2 session
-        loApp.setAttribute("frontdoor-url", frontdoor);
-        log("Set frontdoor-url:", frontdoor);
-
-        setStatus("frontdoor-url set. Waiting for LO ready event...", "muted");
+          const frontdoor = await getFrontdoorUrl(token.access_token, appId);
+          bootstrapLoWithFrontdoor(frontdoor);
+        } catch (e) {
+          log("FATAL:", e?.message || e, e);
+          setStatus("Fatal error ❌ (see log)", "err");
+        }
       }
 
-      main().catch((e) => {
-        log("FATAL:", e?.message || e, e);
-        setStatus("Fatal error ❌ (see log)", "err");
-      });
+      main();
     </script>
   </body>
 </html>
