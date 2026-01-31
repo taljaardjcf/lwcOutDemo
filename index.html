@@ -21,7 +21,6 @@
     (function() {
       const RAILWAY_PROXY = 'https://sc-auth-amart-production.up.railway.app';
       const ENV = 'uat';
-      const APP_ID = '1Us9n00000000mPCAQ';
       const EC_SITE_BASE = 'https://warranty2amartfurniture--amartuat.sandbox.my.site.com';
       const EC_SITE_PATH = '/storeconnect';
 
@@ -46,13 +45,14 @@
           });
           const targetPath = `${EC_SITE_PATH}?${params.toString()}`;
 
-          // Get frontdoor URL from Railway
-          const resp = await fetch(`${RAILWAY_PROXY}/api/lo2/frontdoor`, {
+          // Get frontdoor URL from Railway using standard singleaccess (not LO2)
+          // The /api/frontdoor endpoint generates a fresh OTP each time (unlike LO2 which caches)
+          const resp = await fetch(`${RAILWAY_PROXY}/api/frontdoor`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               env: ENV,
-              appId: APP_ID,
+              retUrl: targetPath,  // Where to redirect after auth
               ecSiteBaseUrl: EC_SITE_BASE
             })
           });
@@ -62,11 +62,8 @@
 
           console.log('[EC] Got frontdoor URL:', data.frontdoorUrl);
 
-          // Modify startURL to go directly to EC site with params
+          // The frontdoor URL already has the correct retURL from the server
           let frontdoorUrl = data.frontdoorUrl;
-          if (frontdoorUrl.includes('startURL=')) {
-            frontdoorUrl = frontdoorUrl.replace(/startURL=[^&]*/, `startURL=${encodeURIComponent(targetPath)}`);
-          }
 
           console.log('[EC] Modified frontdoor URL:', frontdoorUrl);
           setStatus('Loading Experience Cloud (authenticating in iframe)...');
