@@ -7,16 +7,28 @@
     #status { padding: 12px; margin-bottom: 20px; background: #f5f5f5; border-radius: 4px; }
     #status.error { background: #ffebee; color: #c62828; }
     #status.success { background: #e8f5e9; color: #2e7d32; }
-    #lo2-container { min-height: 400px; border: 1px solid #ddd; border-radius: 4px; padding: 20px; }
   </style>
 </head>
 <body>
   <h1>Lightning Out 2.0</h1>
   <div id="status">Initializing...</div>
-  <div id="lo2-container"></div>
 
-  <!-- Load LO2 script from Salesforce org -->
-  <script src="https://warranty2amartfurniture--amartuat.sandbox.my.salesforce.com/lightning/lightning.out.latest/index.iife.prod.js" async></script>
+  <!-- LO2 Script from Salesforce org (per docs) -->
+  <script
+    type="text/javascript"
+    async
+    src="https://warranty2amartfurniture--amartuat.sandbox.my.salesforce.com/lightning/lightning.out.latest/index.iife.prod.js">
+  </script>
+
+  <!-- LO2 Application - frontdoor-url set at runtime (per docs) -->
+  <lightning-out-application
+    id="lo2-app"
+    app-id="1Us9n00000000mPCAQ"
+    components="pos-actions-host-lwc">
+  </lightning-out-application>
+
+  <!-- Component renders here after LO2 authenticates -->
+  <pos-actions-host-lwc></pos-actions-host-lwc>
 
   <script>
     (function() {
@@ -25,7 +37,7 @@
       const APP_ID = '1Us9n00000000mPCAQ';
 
       const statusEl = document.getElementById('status');
-      const container = document.getElementById('lo2-container');
+      const lo2App = document.getElementById('lo2-app');
 
       function setStatus(msg, type) {
         console.log(`[LO2] ${msg}`);
@@ -33,19 +45,34 @@
         statusEl.className = type || '';
       }
 
+      // Event listeners (set up before frontdoor-url is set)
+      lo2App.addEventListener('applicationready', () => {
+        console.log('[LO2] Application ready!');
+        setStatus('Lightning Out 2.0 ready!', 'success');
+      });
+
+      lo2App.addEventListener('applicationerror', (e) => {
+        console.error('[LO2] Application error:', e.detail);
+        setStatus('Error: ' + (e.detail?.message || JSON.stringify(e.detail)), 'error');
+      });
+
+      lo2App.addEventListener('componentready', (e) => {
+        console.log('[LO2] Component ready:', e);
+        setStatus('Component loaded!', 'success');
+      });
+
       async function init() {
-        setStatus('Getting frontdoor URL from proxy...');
+        setStatus('Getting frontdoor URL...');
 
         try {
-          // Get frontdoor URL from Railway proxy
-          // Using org instanceUrl (not EC site) for proper LO2 behavior
+          // Get frontdoor URL from Railway proxy (server-side JWT auth)
           const resp = await fetch(`${RAILWAY_PROXY}/api/lo2/frontdoor`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               env: ENV,
               appId: APP_ID
-              // NOT passing ecSiteBaseUrl - let it use org instanceUrl
+              // Using org instanceUrl (not EC site) per LO2 docs
             })
           });
 
@@ -53,36 +80,12 @@
           if (!resp.ok) throw new Error(data.error || 'Failed to get frontdoor URL');
 
           console.log('[LO2] Got frontdoor URL:', data.frontdoorUrl);
-          setStatus('Creating Lightning Out 2.0 application...');
+          setStatus('Setting frontdoor URL...');
 
-          // Create LO2 application element
-          const lo2App = document.createElement('lightning-out-application');
-          lo2App.setAttribute('app-id', APP_ID);
-          lo2App.setAttribute('components', 'pos-actions-host-lwc');
+          // Set frontdoor-url at runtime (per docs)
+          // "When the frontdoor URL is returned, set the frontdoor-url attribute"
           lo2App.setAttribute('frontdoor-url', data.frontdoorUrl);
 
-          // Event listeners
-          lo2App.addEventListener('applicationready', () => {
-            console.log('[LO2] Application ready!');
-            setStatus('Application ready - adding component...', 'success');
-
-            // Add the component
-            const component = document.createElement('pos-actions-host-lwc');
-            container.appendChild(component);
-          });
-
-          lo2App.addEventListener('applicationerror', (e) => {
-            console.error('[LO2] Application error:', e.detail);
-            setStatus('Error: ' + (e.detail?.message || JSON.stringify(e.detail)), 'error');
-          });
-
-          lo2App.addEventListener('componentready', (e) => {
-            console.log('[LO2] Component ready:', e);
-            setStatus('Component loaded!', 'success');
-          });
-
-          // Add to DOM
-          container.appendChild(lo2App);
           setStatus('Waiting for LO2 to authenticate...');
 
         } catch (err) {
@@ -91,7 +94,7 @@
         }
       }
 
-      // Initialize
+      // Initialize after DOM ready
       if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
       } else {
