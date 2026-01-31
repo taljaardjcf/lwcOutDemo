@@ -13,11 +13,11 @@
   <h1>Lightning Out 2.0</h1>
   <div id="status">Initializing...</div>
 
-  <!-- LO2 Script from Salesforce org (per docs) -->
+  <!-- LO2 Script from EC site (has configurable CSP unlike org) -->
   <script
     type="text/javascript"
     async
-    src="https://warranty2amartfurniture--amartuat.sandbox.my.salesforce.com/lightning/lightning.out.latest/index.iife.prod.js">
+    src="https://warranty2amartfurniture--amartuat.sandbox.my.site.com/lightning/lightning.out.latest/index.iife.prod.js">
   </script>
 
   <!-- Container for LO2 - elements added dynamically after frontdoor URL is obtained -->
@@ -28,6 +28,7 @@
       const RAILWAY_PROXY = 'https://sc-auth-amart-production.up.railway.app';
       const ENV = 'uat';
       const APP_ID = '1Us9n00000000mPCAQ';
+      const EC_SITE_BASE = 'https://warranty2amartfurniture--amartuat.sandbox.my.site.com';
 
       const statusEl = document.getElementById('status');
       const container = document.getElementById('lo2-container');
@@ -43,12 +44,14 @@
 
         try {
           // Get frontdoor URL from Railway proxy (server-side JWT auth)
+          // Using EC site URL - it has configurable frame-ancestors (unlike org which is 'none')
           const resp = await fetch(`${RAILWAY_PROXY}/api/lo2/frontdoor`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               env: ENV,
-              appId: APP_ID
+              appId: APP_ID,
+              ecSiteBaseUrl: EC_SITE_BASE
             })
           });
 
