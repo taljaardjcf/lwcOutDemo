@@ -13,8 +13,8 @@
   <h1>Lightning Out 2.0 Test</h1>
   <div id="status">Initializing...</div>
 
-  <!-- Load LO2 script from EC site (has relaxed CSP) instead of org URL -->
-  <script src="https://warranty2amartfurniture--amartuat.sandbox.my.site.com/lightning/lightning.out.latest/index.iife.prod.js" async></script>
+  <!-- Load LO2 script from org URL (session token approach) -->
+  <script src="https://warranty2amartfurniture--amartuat.sandbox.my.salesforce.com/lightning/lightning.out.latest/index.iife.prod.js" async></script>
 
   <!-- Container where LO2 app and components will be added dynamically -->
   <div id="lo2-container"></div>
@@ -24,7 +24,8 @@
       const RAILWAY_PROXY = 'https://sc-auth-amart-production.up.railway.app';
       const ENV = 'uat';
       const APP_ID = '1Us9n00000000mPCAQ';
-      const EC_SITE_BASE = 'https://warranty2amartfurniture--amartuat.sandbox.my.site.com';
+      // Use org URL (not EC site) for frontdoor - session tokens work better from org
+      const SF_ORG_URL = 'https://warranty2amartfurniture--amartuat.sandbox.my.salesforce.com';
 
       const statusEl = document.getElementById('status');
       const container = document.getElementById('lo2-container');
@@ -39,14 +40,14 @@
         setStatus('Requesting authentication from Railway proxy...');
 
         try {
-          // Get frontdoor URL from Railway proxy
+          // Get frontdoor URL from Railway proxy (using org URL, not EC site)
           const resp = await fetch(`${RAILWAY_PROXY}/api/lo2/frontdoor`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               env: ENV,
-              appId: APP_ID,
-              ecSiteBaseUrl: EC_SITE_BASE
+              appId: APP_ID
+              // Don't pass ecSiteBaseUrl - use org instanceUrl for proper session token handling
             })
           });
 
