@@ -16,15 +16,8 @@
   <!-- Load LO2 script from EC site (has relaxed CSP) instead of org URL -->
   <script src="https://warranty2amartfurniture--amartuat.sandbox.my.site.com/lightning/lightning.out.latest/index.iife.prod.js" async></script>
 
-  <!-- LO2 application - frontdoor-url will be set dynamically after auth -->
-  <lightning-out-application
-    id="lo2-app"
-    app-id="1Us9n00000000mPCAQ"
-    components="pos-actions-host-lwc">
-  </lightning-out-application>
-
-  <!-- Component placeholder - will render after LO2 is ready -->
-  <pos-actions-host-lwc id="lwc-component"></pos-actions-host-lwc>
+  <!-- Container where LO2 app and components will be added dynamically -->
+  <div id="lo2-container"></div>
 
   <script>
     (function() {
@@ -34,29 +27,13 @@
       const EC_SITE_BASE = 'https://warranty2amartfurniture--amartuat.sandbox.my.site.com';
 
       const statusEl = document.getElementById('status');
-      const lo2App = document.getElementById('lo2-app');
+      const container = document.getElementById('lo2-container');
 
       function setStatus(msg, type) {
         console.log(`[LO2] ${msg}`);
         statusEl.textContent = msg;
         statusEl.className = type || '';
       }
-
-      // Listen for LO2 events
-      lo2App.addEventListener('applicationready', () => {
-        console.log('[LO2] Application ready!');
-        setStatus('Lightning Out 2.0 application loaded successfully!', 'success');
-      });
-
-      lo2App.addEventListener('applicationerror', (e) => {
-        console.error('[LO2] Application error:', e.detail);
-        setStatus('Error: ' + (e.detail?.message || 'Unknown error'), 'error');
-      });
-
-      lo2App.addEventListener('componentready', (e) => {
-        console.log('[LO2] Component ready:', e.detail);
-        setStatus('Component loaded and ready!', 'success');
-      });
 
       async function init() {
         setStatus('Requesting authentication from Railway proxy...');
@@ -80,11 +57,36 @@
           }
 
           console.log('[LO2] Got frontdoor URL:', data.frontdoorUrl);
-          setStatus('Setting frontdoor URL on LO2 application...');
+          setStatus('Creating LO2 application...');
 
-          // Set the frontdoor URL - this triggers LO2 authentication
+          // Create the LO2 application element dynamically with frontdoor-url already set
+          const lo2App = document.createElement('lightning-out-application');
+          lo2App.setAttribute('app-id', APP_ID);
+          lo2App.setAttribute('components', 'pos-actions-host-lwc');
           lo2App.setAttribute('frontdoor-url', data.frontdoorUrl);
 
+          // Listen for LO2 events
+          lo2App.addEventListener('applicationready', () => {
+            console.log('[LO2] Application ready!');
+            setStatus('Lightning Out 2.0 application loaded successfully!', 'success');
+
+            // Now add the component after app is ready
+            const component = document.createElement('pos-actions-host-lwc');
+            container.appendChild(component);
+          });
+
+          lo2App.addEventListener('applicationerror', (e) => {
+            console.error('[LO2] Application error:', e.detail);
+            setStatus('Error: ' + (e.detail?.message || 'Unknown error'), 'error');
+          });
+
+          lo2App.addEventListener('componentready', (e) => {
+            console.log('[LO2] Component ready:', e.detail);
+            setStatus('Component loaded and ready!', 'success');
+          });
+
+          // Add to DOM - this starts the LO2 initialization
+          container.appendChild(lo2App);
           setStatus('Waiting for Lightning Out 2.0 to initialize...');
 
         } catch (err) {
