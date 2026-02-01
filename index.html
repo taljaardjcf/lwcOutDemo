@@ -15,14 +15,6 @@
   <div id="status">Initializing...</div>
   <div id="lo2-container"></div>
 
-  <!-- Load LO2 script from Experience Cloud site -->
-  <script
-    type="text/javascript"
-    async
-    onload="window.LO2_READY=true"
-    src="https://warranty2amartfurniture--amartuat.sandbox.my.site.com/storeconnect/lightning/lightning.out.latest/index.iife.prod.js">
-  </script>
-
   <script>
     (function() {
       const RAILWAY_PROXY = 'https://sc-auth-amart-production.up.railway.app';
@@ -37,12 +29,6 @@
         console.log(`[LO2] ${msg}`);
         statusEl.textContent = msg;
         statusEl.className = type || '';
-      }
-
-      async function waitForLO2Script() {
-        while (!window.LO2_READY) {
-          await new Promise(r => setTimeout(r, 50));
-        }
       }
 
       async function init() {
@@ -60,8 +46,6 @@
 
           console.log('[LO2] Got frontdoor URL:', data.frontdoorUrl);
           setStatus('Creating LO2 application...');
-
-          await waitForLO2Script();
 
           const lo2App = document.createElement('lightning-out-application');
           lo2App.setAttribute('app-id', APP_ID);
