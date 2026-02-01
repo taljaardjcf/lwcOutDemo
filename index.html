@@ -9,9 +9,14 @@
     #status.error { background: #ffebee; color: #c62828; }
     #status.success { background: #e8f5e9; color: #2e7d32; }
   </style>
+  <script
+    src="https://warranty2amartfurniture--amartuat.sandbox.my.salesforce.com/lightning/lightning.out.latest/index.iife.prod.js"
+    onload="window.LO2_READY = true;"
+    async>
+  </script>
 </head>
 <body>
-  <h1>Lightning Out 2.0 - tttt</h1>
+  <h1>Lightning Out 2.0 - Test2</h1>
   <div id="status">Initializing...</div>
   <div id="lo2-container"></div>
 
@@ -29,6 +34,18 @@
         console.log(`[LO2] ${msg}`);
         statusEl.textContent = msg;
         statusEl.className = type || '';
+      }
+
+      function waitForRuntime() {
+        if (window.LO2_READY) return Promise.resolve();
+        return new Promise((resolve) => {
+          const check = setInterval(() => {
+            if (window.LO2_READY) {
+              clearInterval(check);
+              resolve();
+            }
+          }, 50);
+        });
       }
 
       async function init() {
@@ -70,6 +87,7 @@
             setStatus('Component loaded!', 'success');
           });
 
+          await waitForRuntime();
           container.appendChild(lo2App);
           setStatus('Waiting for LO2 to authenticate...');
 
