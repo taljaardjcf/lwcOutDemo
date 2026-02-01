@@ -16,7 +16,7 @@
   </script>
 </head>
 <body>
-  <h1>Lightning Out 2.0 - Test Aura 1234</h1>
+  <h1>Lightning Out 2.0 - Test Aura Hiden Frame</h1>
   <div id="status">Initializing...</div>
   <div id="lo2-container"></div>
 
@@ -34,6 +34,22 @@
         console.log(`[LO2] ${msg}`);
         statusEl.textContent = msg;
         statusEl.className = type || '';
+      }
+
+      function bootstrapSession(frontdoorUrl) {
+        return new Promise((resolve) => {
+          const iframe = document.createElement('iframe');
+          iframe.style.display = 'none';
+          iframe.src = frontdoorUrl;
+
+          iframe.onload = () => {
+            console.log('[LO2] Frontdoor iframe loaded, session should be ready');
+            document.body.removeChild(iframe);
+            resolve();
+          };
+
+          document.body.appendChild(iframe);
+        });
       }
 
       function waitForRuntime() {
@@ -62,8 +78,11 @@
           if (!resp.ok) throw new Error(data.error || 'Failed to get frontdoor URL');
 
           console.log('[LO2] Got frontdoor URL:', data.frontdoorUrl);
-          setStatus('Creating LO2 application...');
+          setStatus('Bootstrapping session via iframe...');
 
+          await bootstrapSession(data.frontdoorUrl);
+
+          setStatus('Creating LO2 application...');
           await waitForRuntime();
 
           const lo2App = document.createElement('lightning-out-application');
