@@ -16,7 +16,7 @@
   </script>
 </head>
 <body>
-  <h1>Lightning Out 2.0 - Aura Test 77777</h1>
+  <h1>Lightning Out 2.0 - Aura Fixed</h1>
   <div id="status">Initializing...</div>
   <div id="lo2-container"></div>
 
@@ -64,7 +64,6 @@
 
       async function init() {
         setStatus('Getting frontdoor URL...');
-
         try {
           const resp = await fetch(`${RAILWAY_PROXY}/api/lo2/frontdoor`, {
             method: 'POST',
@@ -74,20 +73,17 @@
 
           const data = await resp.json();
           if (!resp.ok) throw new Error(data.error || 'Failed to get frontdoor URL');
-
-          const frontdoorUrl = data.frontdoorUrl;
-          console.log('[LO2] Got frontdoor URL:', frontdoorUrl);
+          console.log('[LO2] Got frontdoor URL:', data.frontdoorUrl);
 
           setStatus('Bootstrapping session via iframe...');
-          await bootstrapSession(frontdoorUrl);
-
-          setStatus('Creating LO2 application...');
+          await bootstrapSession(data.frontdoorUrl);
           await waitForRuntime();
 
+          setStatus('Creating LO2 application...');
           const lo2App = document.createElement('lightning-out-application');
           lo2App.setAttribute('app-id', APP_ID);
           lo2App.setAttribute('components', COMPONENTS);
-          lo2App.setAttribute('frontdoor-url', frontdoorUrl); // 🛠️ Critical missing attribute
+          // ❌ Do NOT set frontdoor-url again. Session is already established.
 
           lo2App.addEventListener('applicationready', () => {
             console.log('[LO2] Application ready!');
@@ -108,7 +104,6 @@
 
           container.appendChild(lo2App);
           setStatus('Waiting for LO2 to authenticate...');
-
         } catch (err) {
           console.error('[LO2] Error:', err);
           setStatus('Error: ' + err.message, 'error');
