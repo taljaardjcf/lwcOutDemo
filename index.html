@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Lightning Out 2.0 - Aura Bootstrap</title>
+  <title>Lightning Out 2.0 - Aura Fixed</title>
   <link rel="icon" href="data:,">
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; }
@@ -16,7 +16,7 @@
   </script>
 </head>
 <body>
-  <h1>Lightning Out 2.0 - Aura Fixed</h1>
+  <h1>Lightning Out 2.0 - Aura Fixed 2</h1>
   <div id="status">Initializing...</div>
   <div id="lo2-container"></div>
 
@@ -44,7 +44,7 @@
           iframe.onload = () => {
             console.log('[LO2] Frontdoor iframe loaded, session should be ready');
             document.body.removeChild(iframe);
-            resolve();
+            setTimeout(resolve, 500); // delay to ensure cookies are flushed
           };
           document.body.appendChild(iframe);
         });
@@ -83,7 +83,8 @@
           const lo2App = document.createElement('lightning-out-application');
           lo2App.setAttribute('app-id', APP_ID);
           lo2App.setAttribute('components', COMPONENTS);
-          // ❌ Do NOT set frontdoor-url again. Session is already established.
+          lo2App.setAttribute('frontdoor-url', data.frontdoorUrl);
+          lo2App.setAttribute('use-iframe', 'false');
 
           lo2App.addEventListener('applicationready', () => {
             console.log('[LO2] Application ready!');
