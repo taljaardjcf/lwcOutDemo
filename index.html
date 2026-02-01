@@ -1,145 +1,106 @@
-// ✅ PATCHED FOR EXPERIENCE CLOUD SITE
-import { SignJWT, importPKCS8 } from "jose";
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Lightning Out 2.0 Test</title>
+  <link rel="icon" href="data:,">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; }
+    #status { padding: 12px; margin-bottom: 20px; background: #f5f5f5; border-radius: 4px; }
+    #status.error { background: #ffebee; color: #c62828; }
+    #status.success { background: #e8f5e9; color: #2e7d32; }
+  </style>
+</head>
+<body>
+  <h1>Lightning Out 2.0</h1>
+  <div id="status">Initializing...</div>
+  <div id="lo2-container"></div>
 
-function cfg(env) {
-  const upper = String(env || "").toUpperCase();
-  const loginUrlRaw = process.env[`SF_${upper}_LOGIN_URL`];
-  const siteUrlRaw = process.env[`SF_${upper}_SITE_URL`];
-  const loginUrl = (loginUrlRaw || "").trim();
-  const siteUrl = (siteUrlRaw || "").trim();
-  const clientId = process.env[`SF_${upper}_CLIENT_ID`];
-  const username = process.env[`SF_${upper}_USERNAME`];
-  const privateKeyPemRaw = process.env[`SF_${upper}_PRIVATE_KEY_PEM`];
+  <!-- Load LO2 script from Experience Cloud site -->
+  <script
+    type="text/javascript"
+    async
+    onload="window.LO2_READY=true"
+    src="https://warranty2amartfurniture--amartuat.sandbox.my.site.com/storeconnect/lightning/lightning.out.latest/index.iife.prod.js">
+  </script>
 
-  if (!loginUrl || !siteUrl || !clientId || !username || !privateKeyPemRaw) {
-    throw new Error(
-      `Missing env vars for ${upper}. Required: ` +
-        `SF_${upper}_LOGIN_URL, SF_${upper}_SITE_URL, SF_${upper}_CLIENT_ID, ` +
-        `SF_${upper}_USERNAME, SF_${upper}_PRIVATE_KEY_PEM`
-    );
-  }
+  <script>
+    (function() {
+      const RAILWAY_PROXY = 'https://sc-auth-amart-production.up.railway.app';
+      const ENV = 'uat';
+      const APP_ID = '1Us9n00000000mPCAQ';
+      const COMPONENTS = 'c-report-viewer-v2,c-sosl-flow-search,c-pos-actions-buttons,c-pos-actions-host-lwc';
 
-  const privateKeyPem = privateKeyPemRaw.includes("\\n")
-    ? privateKeyPemRaw.replace(/\\n/g, "\n")
-    : privateKeyPemRaw;
+      const statusEl = document.getElementById('status');
+      const container = document.getElementById('lo2-container');
 
-  return { upper, loginUrl: loginUrl.replace(/\/+$/, ""), siteUrl: siteUrl.replace(/\/+$/, ""), clientId, username, privateKeyPem };
-}
-
-export async function getAccessTokenForEnv(env) {
-  const { upper, loginUrl, clientId, username, privateKeyPem } = cfg(env);
-
-  if (privateKeyPem.includes("BEGIN RSA PRIVATE KEY")) {
-    throw new Error(
-      `SF_${upper}_PRIVATE_KEY_PEM is PKCS#1 (\"BEGIN RSA PRIVATE KEY\"). ` +
-        `jose.importPKCS8 requires PKCS#8 (\"BEGIN PRIVATE KEY\"). ` +
-        `Convert it with: openssl pkcs8 -topk8 -nocrypt -in key.pem -out key_pkcs8.pem`
-    );
-  }
-
-  const tokenEndpoint = `${loginUrl}/services/oauth2/token`;
-  const now = Math.floor(Date.now() / 1000);
-  const exp = now + 180;
-
-  const key = await importPKCS8(privateKeyPem, "RS256");
-
-  const assertion = await new SignJWT({})
-    .setProtectedHeader({ alg: "RS256" })
-    .setIssuer(clientId)
-    .setSubject(username)
-    .setAudience(loginUrl)
-    .setIssuedAt(now)
-    .setExpirationTime(exp)
-    .sign(key);
-
-  const body = new URLSearchParams({
-    grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-    assertion
-  });
-
-  const resp = await fetch(tokenEndpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body
-  });
-
-  const text = await resp.text();
-  if (!resp.ok) {
-    const hint = text.includes("user hasn't approved this consumer")
-      ? " (user must be pre-authorized for the connected app)"
-      : text.includes("app_not_found")
-        ? " (consumer key must exist in this org)"
-        : "";
-    throw new Error(`Salesforce token error (${resp.status}): ${text}${hint}`);
-  }
-
-  const json = JSON.parse(text);
-  if (!json.access_token) throw new Error(`No access_token returned: ${text}`);
-  if (!json.instance_url) throw new Error(`No instance_url returned: ${text}`);
-
-  return { accessToken: json.access_token, instanceUrl: json.instance_url };
-}
-
-export async function getFrontdoorUrlForEnv(env, accessToken, instanceUrl, appId, retUrl) {
-  const { siteUrl } = cfg(env);
-
-  const params = new URLSearchParams();
-  params.set("access_token", accessToken);
-  params.set("lightning_out_app_id", appId);
-
-  const endpoint = `${siteUrl}/services/oauth2/lightningoutsingleaccess`;
-
-  console.log(`[getFrontdoorUrl] Calling ${endpoint}`);
-  console.log(`[getFrontdoorUrl] Params:`, { lightning_out_app_id: appId });
-
-  const resp = await fetch(endpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: params
-  });
-
-  const text = await resp.text();
-  console.log(`[getFrontdoorUrl] Response (${resp.status}):`, text);
-
-  if (!resp.ok) {
-    if (resp.status === 404 || resp.status === 406) {
-      console.log(`[getFrontdoorUrl] Trying fallback /singleaccess`);
-      const fallbackParams = new URLSearchParams();
-      if (appId) fallbackParams.set("app_id", appId);
-      if (retUrl) fallbackParams.set("retURL", retUrl);
-
-      const fallback = await fetch(`${siteUrl}/services/oauth2/singleaccess`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          Authorization: `Bearer ${accessToken}`
-        },
-        body: fallbackParams
-      });
-
-      const fbText = await fallback.text();
-      console.log(`[fallback] Response (${fallback.status}):`, fbText);
-
-      if (!fallback.ok) {
-        throw new Error(`singleaccess error (${fallback.status}): ${fbText}`);
+      function setStatus(msg, type) {
+        console.log(`[LO2] ${msg}`);
+        statusEl.textContent = msg;
+        statusEl.className = type || '';
       }
 
-      const fbJson = JSON.parse(fbText);
-      if (!fbJson.frontdoor_uri) throw new Error(`No frontdoor_uri: ${fbText}`);
-      return fbJson.frontdoor_uri;
-    }
-    throw new Error(`lightningoutsingleaccess error (${resp.status}): ${text}`);
-  }
+      async function waitForLO2Script() {
+        while (!window.LO2_READY) {
+          await new Promise(r => setTimeout(r, 50));
+        }
+      }
 
-  const json = JSON.parse(text);
-  if (!json.frontdoor_uri) throw new Error(`No frontdoor_uri in response: ${text}`);
+      async function init() {
+        setStatus('Getting frontdoor URL...');
 
-  let frontdoorUrl = json.frontdoor_uri;
-  if (retUrl) {
-    const urlObj = new URL(frontdoorUrl);
-    urlObj.searchParams.set('retURL', retUrl);
-    frontdoorUrl = urlObj.toString();
-  }
+        try {
+          const resp = await fetch(`${RAILWAY_PROXY}/api/lo2/frontdoor`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ env: ENV, appId: APP_ID })
+          });
 
-  return frontdoorUrl;
-}
+          const data = await resp.json();
+          if (!resp.ok) throw new Error(data.error || 'Failed to get frontdoor URL');
+
+          console.log('[LO2] Got frontdoor URL:', data.frontdoorUrl);
+          setStatus('Creating LO2 application...');
+
+          await waitForLO2Script();
+
+          const lo2App = document.createElement('lightning-out-application');
+          lo2App.setAttribute('app-id', APP_ID);
+          lo2App.setAttribute('components', COMPONENTS);
+          lo2App.setAttribute('frontdoor-url', data.frontdoorUrl);
+
+          lo2App.addEventListener('applicationready', () => {
+            console.log('[LO2] Application ready!');
+            setStatus('Application ready!', 'success');
+
+            const component = document.createElement('c-pos-actions-host-lwc');
+            container.appendChild(component);
+          });
+
+          lo2App.addEventListener('applicationerror', (e) => {
+            console.error('[LO2] Application error:', e.detail);
+            setStatus('Error: ' + (e.detail?.message || JSON.stringify(e.detail)), 'error');
+          });
+
+          lo2App.addEventListener('componentready', (e) => {
+            console.log('[LO2] Component ready:', e);
+            setStatus('Component loaded!', 'success');
+          });
+
+          container.appendChild(lo2App);
+          setStatus('Waiting for LO2 to authenticate...');
+
+        } catch (err) {
+          console.error('[LO2] Error:', err);
+          setStatus('Error: ' + err.message, 'error');
+        }
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+      } else {
+        init();
+      }
+    })();
+  </script>
+</body>
+</html>
