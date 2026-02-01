@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Lightning Out 2.0 Test Aura 2</title>
+  <title>Lightning Out 2.0 - Aura Bootstrap</title>
   <link rel="icon" href="data:,">
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; }
@@ -10,19 +10,13 @@
     #status.success { background: #e8f5e9; color: #2e7d32; }
   </style>
   <script
-  src="https://warranty2amartfurniture--amartuat.sandbox.my.site.com/posactions/lightning/lightning.out.latest/index.iife.prod.js"
-  onload="window.LO2_READY = true;"
-  async>
-</script>
-
-  <!--<script
-    src="https://warranty2amartfurniture--amartuat.sandbox.my.salesforce.com/lightning/lightning.out.latest.min.js"
+    src="https://warranty2amartfurniture--amartuat.sandbox.my.site.com/posactions/lightning/lightning.out.latest/index.iife.prod.js"
     onload="window.LO2_READY = true;"
     async>
-  </script>-->
+  </script>
 </head>
 <body>
-  <h1>Lightning Out 2.0 - Test Aura Hiden Frame 2</h1>
+  <h1>Lightning Out 2.0 - Aura Test</h1>
   <div id="status">Initializing...</div>
   <div id="lo2-container"></div>
 
@@ -47,13 +41,11 @@
           const iframe = document.createElement('iframe');
           iframe.style.display = 'none';
           iframe.src = frontdoorUrl;
-
           iframe.onload = () => {
             console.log('[LO2] Frontdoor iframe loaded, session should be ready');
             document.body.removeChild(iframe);
             resolve();
           };
-
           document.body.appendChild(iframe);
         });
       }
@@ -72,20 +64,17 @@
 
       async function init() {
         setStatus('Getting frontdoor URL...');
-
         try {
           const resp = await fetch(`${RAILWAY_PROXY}/api/lo2/frontdoor`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ env: ENV, appId: APP_ID })
           });
-
           const data = await resp.json();
           if (!resp.ok) throw new Error(data.error || 'Failed to get frontdoor URL');
 
           console.log('[LO2] Got frontdoor URL:', data.frontdoorUrl);
           setStatus('Bootstrapping session via iframe...');
-
           await bootstrapSession(data.frontdoorUrl);
 
           setStatus('Creating LO2 application...');
@@ -94,12 +83,10 @@
           const lo2App = document.createElement('lightning-out-application');
           lo2App.setAttribute('app-id', APP_ID);
           lo2App.setAttribute('components', COMPONENTS);
-          lo2App.setAttribute('frontdoor-url', data.frontdoorUrl);
 
           lo2App.addEventListener('applicationready', () => {
             console.log('[LO2] Application ready!');
             setStatus('Application ready!', 'success');
-
             const component = document.createElement('c-pos-actions-host-lwc');
             container.appendChild(component);
           });
@@ -116,7 +103,6 @@
 
           container.appendChild(lo2App);
           setStatus('Waiting for LO2 to authenticate...');
-
         } catch (err) {
           console.error('[LO2] Error:', err);
           setStatus('Error: ' + err.message, 'error');
