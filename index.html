@@ -9,14 +9,14 @@
     #status.error { background: #ffebee; color: #c62828; }
     #status.success { background: #e8f5e9; color: #2e7d32; }
   </style>
-  <!--<script
-    src="https://warranty2amartfurniture--amartuat.sandbox.my.salesforce.com/lightning/lightning.out.latest/index.iife.prod.js"
+  <script
+    src="https://warranty2amartfurniture--amartuat.sandbox.my.salesforce.com/lightning/lightning.out.latest.min.js"
     onload="window.LO2_READY = true;"
     async>
-  </script>-->
+  </script>
 </head>
 <body>
-  <h1>Lightning Out 2.0 - Test2</h1>
+  <h1>Lightning Out 2.0 - Test Aura 1234</h1>
   <div id="status">Initializing...</div>
   <div id="lo2-container"></div>
 
@@ -64,6 +64,8 @@
           console.log('[LO2] Got frontdoor URL:', data.frontdoorUrl);
           setStatus('Creating LO2 application...');
 
+          await waitForRuntime();
+
           const lo2App = document.createElement('lightning-out-application');
           lo2App.setAttribute('app-id', APP_ID);
           lo2App.setAttribute('components', COMPONENTS);
@@ -87,7 +89,6 @@
             setStatus('Component loaded!', 'success');
           });
 
-          await waitForRuntime();
           container.appendChild(lo2App);
           setStatus('Waiting for LO2 to authenticate...');
 
