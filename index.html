@@ -12,23 +12,22 @@
 <body>
   <h1>Lightning Out 2.0</h1>
   <div id="status">Initializing...</div>
+  <div id="lo2-container"></div>
 
-  <!-- LO2 Script from org URL (per Salesforce documentation) -->
+  <!-- Load LO2 script early -->
   <script
     type="text/javascript"
     async
+    onload="window.LO2_READY=true"
     src="https://warranty2amartfurniture--amartuat.sandbox.my.salesforce.com/lightning/lightning.out.latest/index.iife.prod.js">
   </script>
-
-  <!-- Container for LO2 - elements added dynamically after frontdoor URL is obtained -->
-  <div id="lo2-container"></div>
 
   <script>
     (function() {
       const RAILWAY_PROXY = 'https://sc-auth-amart-production.up.railway.app';
       const ENV = 'uat';
       const APP_ID = '1Us9n00000000mPCAQ';
-      // Per Salesforce docs: use org URL (my.salesforce.com), not EC site (my.site.com)
+      const COMPONENTS = 'c-reportViewerV2,c-soslFlowSearch,c-posActionsButtons,c-posActionsHostLwc';
 
       const statusEl = document.getElementById('status');
       const container = document.getElementById('lo2-container');
@@ -39,20 +38,20 @@
         statusEl.className = type || '';
       }
 
+      async function waitForLO2Script() {
+        while (!window.LO2_READY) {
+          await new Promise(r => setTimeout(r, 50));
+        }
+      }
+
       async function init() {
         setStatus('Getting frontdoor URL...');
 
         try {
-          // Get frontdoor URL from Railway proxy (server-side JWT auth)
-          // Per Salesforce docs: POST to MyDomainName.my.salesforce.com/services/oauth2/lightningoutsingleaccess
           const resp = await fetch(`${RAILWAY_PROXY}/api/lo2/frontdoor`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              env: ENV,
-              appId: APP_ID
-              // No ecSiteBaseUrl - use org URL as per documentation
-            })
+            body: JSON.stringify({ env: ENV, appId: APP_ID })
           });
 
           const data = await resp.json();
@@ -61,19 +60,18 @@
           console.log('[LO2] Got frontdoor URL:', data.frontdoorUrl);
           setStatus('Creating LO2 application...');
 
-          // Create LO2 application element with frontdoor-url already set
+          await waitForLO2Script();
+
           const lo2App = document.createElement('lightning-out-application');
           lo2App.setAttribute('app-id', APP_ID);
-          lo2App.setAttribute('components', 'pos-actions-host-lwc');
+          lo2App.setAttribute('components', COMPONENTS);
           lo2App.setAttribute('frontdoor-url', data.frontdoorUrl);
 
-          // Event listeners
           lo2App.addEventListener('applicationready', () => {
             console.log('[LO2] Application ready!');
             setStatus('Application ready!', 'success');
 
-            // Add component after application is ready
-            const component = document.createElement('pos-actions-host-lwc');
+            const component = document.createElement('c-pos-actions-host-lwc');
             container.appendChild(component);
           });
 
@@ -87,7 +85,6 @@
             setStatus('Component loaded!', 'success');
           });
 
-          // Add to DOM - this triggers LO2 initialization
           container.appendChild(lo2App);
           setStatus('Waiting for LO2 to authenticate...');
 
@@ -97,7 +94,6 @@
         }
       }
 
-      // Initialize after DOM ready
       if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
       } else {
