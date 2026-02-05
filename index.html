@@ -26,6 +26,7 @@
     const ENV = 'uat';
     const APP_ID = '1Us9n00000000mPCAQ';
     const COMPONENTS = 'c-pos-actions-host-lwc';
+    const EC_SITE_URL = 'https://warranty2amartfurniture--amartuat.sandbox.my.site.com/storeconnect';
 
     const statusEl = document.getElementById('status');
     const container = document.getElementById('lo2-container');
@@ -56,7 +57,11 @@
         const resp = await fetch(`${RAILWAY_PROXY}/api/lo2/frontdoor`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ env: ENV, appId: APP_ID })
+          body: JSON.stringify({ 
+            env: ENV, 
+            appId: APP_ID,
+            ecSiteBaseUrl: EC_SITE_URL
+          })
         });
 
         const data = await resp.json();
@@ -68,7 +73,6 @@
         lo2App.setAttribute('app-id', APP_ID);
         lo2App.setAttribute('components', COMPONENTS);
         lo2App.setAttribute('frontdoor-url', data.frontdoorUrl);
-        // Try WITH iframe - LO2 may handle auth better this way
         lo2App.setAttribute('use-iframe', 'true');
 
         lo2App.addEventListener('applicationready', () => {
