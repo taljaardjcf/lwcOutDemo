@@ -16,107 +16,86 @@
   </script>
 </head>
 <body>
-  <h1>Lightning Out 2.0 - Aura Fixed 2</h1>
+  <h1>Lightning Out 2.0 - Lightning Out 2.0</h1>
   <div id="status">Initializing...</div>
   <div id="lo2-container"></div>
 
-  <script>
-    (function () {
-      const RAILWAY_PROXY = 'https://sc-auth-amart-production.up.railway.app';
-      const ENV = 'uat';
-      const APP_ID = '1Us9n00000000mPCAQ';
-      const COMPONENTS = 'c-pos-actions-host-lwc';
+ <script>
+  (function () {
+    const RAILWAY_PROXY = 'https://sc-auth-amart-production.up.railway.app';
+    const ENV = 'uat';
+    const APP_ID = '1Us9n00000000mPCAQ';
+    const COMPONENTS = 'c-pos-actions-host-lwc';
 
-      const statusEl = document.getElementById('status');
-      const container = document.getElementById('lo2-container');
+    const statusEl = document.getElementById('status');
+    const container = document.getElementById('lo2-container');
 
-      function setStatus(msg, type) {
-        console.log(`[LO2] ${msg}`);
-        statusEl.textContent = msg;
-        statusEl.className = type || '';
-      }
+    function setStatus(msg, type) {
+      console.log(`[LO2] ${msg}`);
+      statusEl.textContent = msg;
+      statusEl.className = type || '';
+    }
 
-      function bootstrapSession(frontdoorUrl) {
-        return new Promise((resolve) => {
-          const iframe = document.createElement('iframe');
-          iframe.style.display = 'none';
-          iframe.src = frontdoorUrl;
-          iframe.onload = () => {
-            console.log('[LO2] Frontdoor iframe loaded, session should be ready');
-            document.body.removeChild(iframe);
-            setTimeout(resolve, 500); // delay to ensure cookies are flushed
-          };
-          document.body.appendChild(iframe);
-        });
-      }
+    function waitForRuntime() {
+      if (window.LO2_READY) return Promise.resolve();
+      return new Promise((resolve) => {
+        const check = setInterval(() => {
+          if (window.LO2_READY) {
+            clearInterval(check);
+            resolve();
+          }
+        }, 50);
+      });
+    }
 
-      function waitForRuntime() {
-        if (window.LO2_READY) return Promise.resolve();
-        return new Promise((resolve) => {
-          const check = setInterval(() => {
-            if (window.LO2_READY) {
-              clearInterval(check);
-              resolve();
-            }
-          }, 50);
-        });
-      }
-
-      async function init() {
+    async function init() {
+      try {
+        await waitForRuntime();
+        
         setStatus('Getting frontdoor URL...');
-        try {
-          const resp = await fetch(`${RAILWAY_PROXY}/api/lo2/frontdoor`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ env: ENV, appId: APP_ID })
-          });
+        const resp = await fetch(`${RAILWAY_PROXY}/api/lo2/frontdoor`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ env: ENV, appId: APP_ID })
+        });
 
-          const data = await resp.json();
-          if (!resp.ok) throw new Error(data.error || 'Failed to get frontdoor URL');
-          console.log('[LO2] Got frontdoor URL:', data.frontdoorUrl);
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || 'Failed to get frontdoor URL');
+        console.log('[LO2] Got frontdoor URL:', data.frontdoorUrl);
 
-          setStatus('Bootstrapping session via iframe...');
-          await bootstrapSession(data.frontdoorUrl);
-          await waitForRuntime();
+        setStatus('Creating LO2 application...');
+        const lo2App = document.createElement('lightning-out-application');
+        lo2App.setAttribute('app-id', APP_ID);
+        lo2App.setAttribute('components', COMPONENTS);
+        lo2App.setAttribute('frontdoor-url', data.frontdoorUrl);
+        // Try WITH iframe - LO2 may handle auth better this way
+        lo2App.setAttribute('use-iframe', 'true');
 
-          setStatus('Creating LO2 application...');
-          const lo2App = document.createElement('lightning-out-application');
-          lo2App.setAttribute('app-id', APP_ID);
-          lo2App.setAttribute('components', COMPONENTS);
-          lo2App.setAttribute('frontdoor-url', data.frontdoorUrl);
-          lo2App.setAttribute('use-iframe', 'false');
+        lo2App.addEventListener('applicationready', () => {
+          console.log('[LO2] Application ready!');
+          setStatus('Application ready!', 'success');
+        });
 
-          lo2App.addEventListener('applicationready', () => {
-            console.log('[LO2] Application ready!');
-            setStatus('Application ready!', 'success');
-            const component = document.createElement('c-pos-actions-host-lwc');
-            container.appendChild(component);
-          });
+        lo2App.addEventListener('applicationerror', (e) => {
+          console.error('[LO2] Application error:', e.detail);
+          setStatus('Error: ' + (e.detail?.message || JSON.stringify(e.detail)), 'error');
+        });
 
-          lo2App.addEventListener('applicationerror', (e) => {
-            console.error('[LO2] Application error:', e.detail);
-            setStatus('Error: ' + (e.detail?.message || JSON.stringify(e.detail)), 'error');
-          });
-
-          lo2App.addEventListener('componentready', (e) => {
-            console.log('[LO2] Component ready:', e);
-            setStatus('Component loaded!', 'success');
-          });
-
-          container.appendChild(lo2App);
-          setStatus('Waiting for LO2 to authenticate...');
-        } catch (err) {
-          console.error('[LO2] Error:', err);
-          setStatus('Error: ' + err.message, 'error');
-        }
+        container.appendChild(lo2App);
+        setStatus('Waiting for LO2 to authenticate...');
+      } catch (err) {
+        console.error('[LO2] Error:', err);
+        setStatus('Error: ' + err.message, 'error');
       }
+    }
 
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
-      } else {
-        init();
-      }
-    })();
-  </script>
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+  })();
+</script>
+
 </body>
 </html>
