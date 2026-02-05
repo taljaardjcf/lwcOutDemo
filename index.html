@@ -16,15 +16,50 @@
     .log-error { color: #ef5350; }
   </style>
   <!-- Classic Lightning Out script from EC Site -->
-  <script src="https://warranty2amartfurniture--amartuat.sandbox.my.site.com/posactions/lightning/lightning.out.js"></script>
+
+
+
+
+  
 </head>
 <body>
+    <script type="text/javascript" async="" src="https://warranty2amartfurniture--amartuat.sandbox.my.salesforce.com/lightning/lightning.out.latest/index.iife.prod.js"></script>
+
+  
   <h2>StoreConnect POS Actions - Lightning Out</h2>
   <div id="status">Initializing...</div>
   <div id="container"></div>
   <div id="logs"></div>
 
-  <script>
+
+
+  <!-- Lightning Out 2.0 web component: base configuration -->
+  <lightning-out-application
+    app-id="1Us9n00000000mPCAQ"
+    frontdoor-url="https://warranty2amartfurniture--amartuat.sandbox.my.salesforce.com/secur/frontdoor.jsp?otp=00D9n000002gTAv%21AQEAQGNPCvkDkIUhoS6XEABhZ0BB5eGVsG7975DYioTE_WhCJA693eRhqvuZtX5cdS1PWgGLDLpOrOelg2l3MDjjJw111xs1&cshc=3000000QMHjn000002gTAv"
+    components="pos-actions-host-lwc"
+  >
+  </lightning-out-application>
+  <!-- Lightning Out 2.0 web component with optional styling hooks -->
+  <pos-actions-host-lwc></pos-actions-host-lwc>
+ 
+  <!--<c-my-lwc style="--custom-color: brown;">
+    
+    <iframe>
+      <html>
+    
+        <body>
+    
+          <c-my-lwc style="--custom-color: brown;"></c-my-lwc>
+        </body>
+      </html>
+    </iframe>
+    
+  </c-my-lwc>-->
+
+    
+
+<!--  <script>
     const APP_NAME = 'c:posActionsOutApp';  // Your Lightning Out App that extends ltng:outApp
     const COMPONENT = 'c:posActionsHostLWC';
     const RAILWAY_PROXY = 'https://sc-auth-amart-production.up.railway.app';
@@ -114,6 +149,6 @@
     } else {
       init();
     }
-  </script>
+  </script>-->
 </body>
 </html>
