@@ -5,108 +5,68 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>StoreConnect POS Actions</title>
     <style>
-        body {
-            margin: 0;
-            padding: 0;
-            font-family: 'Salesforce Sans', Arial, sans-serif;
-        }
-        #status {
-            padding: 12px;
-            margin: 12px;
-            color: #444;
-            background: #f3f3f3;
-            border-radius: 4px;
-        }
-        #status.error {
-            color: #b00020;
-            background: #ffebee;
-        }
-        #lo2-container {
-            width: 100%;
-            min-height: 500px;
-        }
+        body { margin: 0; padding: 0; font-family: 'Salesforce Sans', Arial, sans-serif; }
+        #status { padding: 12px; margin: 12px; color: #444; background: #f3f3f3; border-radius: 4px; }
+        #status.error { color: #b00020; background: #ffebee; }
+        #lo2-container { width: 100%; min-height: 500px; }
     </style>
 </head>
 <body>
-    <div id="status">Initializing Lightning Out 2.0...Test 5</div>
-    <div id="lo2-container">
-        <lightning-out-application
-            id="lo2-app"
-            app-id="1Us9n00000000mPCAQ"
-            components="pos-actions-host-lwc">
-        </lightning-out-application>
-    </div>
+    <div id="status">Initializing Lightning Out 2.0...</div>
+    <div id="lo2-container"></div>
 
-    <!-- Load Lightning Out 2.0 script from Salesforce -->
     <script src="https://warranty2amartfurniture--amartuat.sandbox.my.site.com/posactions/lightning/lightning.out.latest/index.iife.prod.js"></script>
 
     <script>
         (function() {
-            console.log('[EC-LO2] Page loaded (user already authenticated via frontdoor)');
-
+            const RAILWAY_PROXY = 'https://sc-auth-amart-production.up.railway.app';
             const statusEl = document.getElementById('status');
-            const lo2El = document.getElementById('lo2-app');
-
-            if (!lo2El) {
-                console.error('[EC-LO2] Lightning Out element not found!');
-                return;
-            }
+            const container = document.getElementById('lo2-container');
 
             function setStatus(msg, isError) {
-                console.log(`[EC-LO2] Status: ${msg}`);
+                console.log(`[EC-LO2] ${msg}`);
                 statusEl.textContent = msg;
                 statusEl.className = isError ? 'error' : '';
             }
 
-            // Parse URL parameters
-            const urlParams = new URLSearchParams(window.location.search);
-            const frontdoorUrl = urlParams.get('frontdoorUrl') || '';
-            const recordId = urlParams.get('recordId') || '';
-            const userType = urlParams.get('userType') || '';
-            const userSfId = urlParams.get('userSfId') || '';
+            async function init() {
+                try {
+                    setStatus('Fetching frontdoor URL...');
+                    const resp = await fetch(`${RAILWAY_PROXY}/api/lo2/frontdoor`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ env: 'uat', appId: '1Us9n00000000mPCAQ' })
+                    });
+                    const data = await resp.json();
+                    if (!resp.ok) throw new Error(data.error);
 
-            console.log('[EC-LO2] URL Parameters:', {
-                frontdoorUrl: frontdoorUrl ? '(present)' : '(missing)',
-                recordId: recordId,
-                userType: userType,
-                userSfId: userSfId
-            });
+                    setStatus('Creating LO2 application...');
+                    const lo2App = document.createElement('lightning-out-application');
+                    lo2App.setAttribute('app-id', '1Us9n00000000mPCAQ');
+                    lo2App.setAttribute('components', 'pos-actions-host-lwc');
+                    lo2App.setAttribute('frontdoor-url', data.frontdoorUrl);
 
-            if (!frontdoorUrl) {
-                console.error('[EC-LO2] ERROR: frontdoorUrl parameter is missing!');
-                setStatus('Error: Authentication URL missing', true);
-                return;
+                    lo2App.addEventListener('applicationready', () => {
+                        console.log('[EC-LO2] Application ready!');
+                        setStatus('Application ready!');
+                        const component = document.createElement('pos-actions-host-lwc');
+                        container.appendChild(component);
+                    });
+
+                    lo2App.addEventListener('applicationerror', (e) => {
+                        console.error('[EC-LO2] Error:', e.detail);
+                        setStatus('Error: ' + (e.detail?.message || 'Unknown'), true);
+                    });
+
+                    container.appendChild(lo2App);
+                    setStatus('Waiting for LO2...');
+                } catch (err) {
+                    console.error('[EC-LO2] Error:', err);
+                    setStatus('Error: ' + err.message, true);
+                }
             }
 
-            // Listen for Lightning Out events
-            lo2El.addEventListener('applicationready', () => {
-                console.log('[EC-LO2] Application ready!');
-                setStatus('Lightning Out 2.0 application loaded successfully!');
-            });
-
-            lo2El.addEventListener('applicationerror', (e) => {
-                console.error('[EC-LO2] Application error:', e);
-                setStatus('Lightning Out error: ' + (e.detail?.message || 'Unknown error'), true);
-            });
-
-            lo2El.addEventListener('componentready', () => {
-                console.log('[EC-LO2] Component ready!');
-                setStatus('Flow is running...');
-            });
-
-            // Set frontdoor-url for authentication
-            console.log('[EC-LO2] Setting frontdoor-url attribute for authentication...');
-            lo2El.setAttribute('frontdoor-url', frontdoorUrl);
-
-            // Set flow input variables
-            console.log('[EC-LO2] Setting flow input variables...');
-            lo2El.setAttribute('flow-api-name', 'StoreConnect_POS_Actions');
-            lo2El.setAttribute('record-id', recordId);
-            lo2El.setAttribute('user-type', userType);
-            lo2El.setAttribute('user-sf-id', userSfId);
-
-            console.log('[EC-LO2] All attributes set. Waiting for LO2 to initialize...');
-            setStatus('Loading Lightning Out 2.0...');
+            init();
         })();
     </script>
 </body>
