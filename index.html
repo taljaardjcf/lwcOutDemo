@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Lightning Out 2.0 - LWC Out 2.0</title>
+  <title>Lightning Out 2.0 - Declarative</title>
   <link rel="icon" href="data:,">
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; }
@@ -17,38 +17,31 @@
       font-size: 12px;
       max-height: 300px;
       overflow-y: auto;
-      white-space: pre-wrap;
     }
     .log-info { color: #4fc3f7; }
     .log-success { color: #81c784; }
     .log-error { color: #ef5350; }
     .log-warn { color: #ffb74d; }
   </style>
-  <script
-    src="https://warranty2amartfurniture--amartuat.sandbox.my.salesforce.com/lightning/lightning.out.latest/index.iife.prod.js"
-    onload="window.LO2_READY = true; window.logMessage && window.logMessage('LO2 script loaded', 'success');"
-    onerror="window.logMessage && window.logMessage('Failed to load LO2 script!', 'error');"
-    async>
-  </script>
 </head>
 <body>
-  <h1>Lightning Out 2.0 - With Frontdoor Auth</h1>
+  <h1>Lightning Out 2.0 - Declarative</h1>
   <div id="status">Initializing...</div>
-  <div id="lo2-container"></div>
+  
+  <!-- Declarative LO2 elements - like the working example -->
+  <lightning-out-application 
+    app-id="1Us9n00000000mPCAQ" 
+    components="pos-actions-host-lwc">
+  </lightning-out-application>
+  <pos-actions-host-lwc></pos-actions-host-lwc>
+
   <h3>Debug Logs:</h3>
   <div id="logs"></div>
 
- <script>
-  (function () {
-    const RAILWAY_PROXY = 'https://sc-auth-amart-production.up.railway.app';
-    const ENV = 'uat';
-    const APP_ID = '1Us9n00000000mPCAQ';
-    const COMPONENT_NAME = 'pos-actions-host-lwc';
-    // NOT passing ecSiteBaseUrl - let it use .my.salesforce.com
-
-    const statusEl = document.getElementById('status');
-    const container = document.getElementById('lo2-container');
+  <!-- Load the LO2 script AFTER the elements are in the DOM -->
+  <script>
     const logsEl = document.getElementById('logs');
+    const statusEl = document.getElementById('status');
 
     window.logMessage = function(msg, type = 'info') {
       const timestamp = new Date().toISOString().split('T')[1].slice(0, 12);
@@ -56,133 +49,54 @@
       logLine.className = `log-${type}`;
       logLine.textContent = `[${timestamp}] ${msg}`;
       logsEl.appendChild(logLine);
-      logsEl.scrollTop = logsEl.scrollHeight;
       console.log(`[LO2:${type}] ${msg}`);
     };
 
-    function setStatus(msg, type) {
-      logMessage(msg, type || 'info');
-      statusEl.textContent = msg;
-      statusEl.className = type || '';
-    }
-
-    function waitForRuntime() {
-      logMessage('Waiting for LO2 runtime...', 'info');
-      if (window.LO2_READY) {
-        logMessage('LO2 runtime already available', 'success');
-        return Promise.resolve();
-      }
-      return new Promise((resolve, reject) => {
-        let attempts = 0;
-        const check = setInterval(() => {
-          attempts++;
-          if (window.LO2_READY) {
-            clearInterval(check);
-            logMessage(`LO2 runtime ready after ${attempts} checks`, 'success');
-            resolve();
-          } else if (attempts > 100) {
-            clearInterval(check);
-            logMessage('Timeout waiting for LO2 runtime', 'error');
-            reject(new Error('LO2 runtime timeout'));
-          }
-        }, 50);
-      });
-    }
-
-    async function init() {
-      logMessage('=== Init started ===', 'info');
-      logMessage(`Config: APP_ID=${APP_ID}, COMPONENT=${COMPONENT_NAME}`, 'info');
-
-      try {
-        await waitForRuntime();
-        
-        // Get frontdoor URL from .my.salesforce.com (no ecSiteBaseUrl)
-        setStatus('Getting frontdoor URL...');
-        const requestBody = { 
-          env: ENV, 
-          appId: APP_ID
-          // NOT passing ecSiteBaseUrl
-        };
-        logMessage(`Request body: ${JSON.stringify(requestBody)}`, 'info');
-
-        const resp = await fetch(`${RAILWAY_PROXY}/api/lo2/frontdoor`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(requestBody)
-        });
-
-        const data = await resp.json();
-        logMessage(`Response: ${JSON.stringify(data)}`, resp.ok ? 'success' : 'error');
-        if (!resp.ok) throw new Error(data.error || 'Failed to get frontdoor URL');
-
-        setStatus('Creating LO2 application with frontdoor URL...');
-        
-        const lo2App = document.createElement('lightning-out-application');
-        lo2App.setAttribute('app-id', APP_ID);
-        lo2App.setAttribute('components', COMPONENT_NAME);
-        lo2App.setAttribute('frontdoor-url', data.frontdoorUrl);
-        // Try without use-iframe first
-
-        logMessage(`Attributes: app-id=${APP_ID}, components=${COMPONENT_NAME}`, 'info');
-        logMessage(`frontdoor-url=${data.frontdoorUrl}`, 'info');
-
-        lo2App.addEventListener('applicationready', () => {
-          logMessage('EVENT: applicationready!', 'success');
-          setStatus('Application ready!', 'success');
-          
-          const component = document.createElement(COMPONENT_NAME);
-          container.appendChild(component);
-          logMessage('Component added to DOM', 'success');
-        });
-
-        lo2App.addEventListener('applicationerror', (e) => {
-          logMessage(`EVENT: applicationerror - ${JSON.stringify(e.detail)}`, 'error');
-          setStatus('Error: ' + (e.detail?.message || JSON.stringify(e.detail)), 'error');
-        });
-
-        lo2App.addEventListener('componentready', (e) => {
-          logMessage(`EVENT: componentready`, 'success');
-          setStatus('Component loaded!', 'success');
-        });
-
-        lo2App.addEventListener('componenterror', (e) => {
-          logMessage(`EVENT: componenterror - ${JSON.stringify(e.detail)}`, 'error');
-        });
-
-        window.addEventListener('message', (e) => {
-          if (e.origin.includes('salesforce') || e.origin.includes('force.com')) {
-            logMessage(`PostMessage from ${e.origin}: ${JSON.stringify(e.data).substring(0, 300)}`, 'warn');
-          }
-        });
-
-        container.appendChild(lo2App);
-        setStatus('Waiting for LO2...');
-
-        // Check status after delays
-        setTimeout(() => {
-          const iframes = document.querySelectorAll('iframe');
-          logMessage(`Iframes after 3s: ${iframes.length}`, iframes.length > 0 ? 'info' : 'warn');
-        }, 3000);
-
-      } catch (err) {
-        logMessage(`ERROR: ${err.message}`, 'error');
-        setStatus('Error: ' + err.message, 'error');
-      }
-    }
-
-    logMessage('Script loaded, waiting for DOM...', 'info');
+    // Listen for LO2 events
+    const lo2App = document.querySelector('lightning-out-application');
     
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', () => {
-        logMessage('DOMContentLoaded fired', 'info');
-        init();
-      });
-    } else {
-      logMessage('DOM already ready', 'info');
-      init();
-    }
-  })();
-</script>
+    lo2App.addEventListener('applicationready', () => {
+      logMessage('EVENT: applicationready!', 'success');
+      statusEl.textContent = 'Application ready!';
+      statusEl.className = 'success';
+    });
 
+    lo2App.addEventListener('applicationerror', (e) => {
+      logMessage(`EVENT: applicationerror - ${JSON.stringify(e.detail)}`, 'error');
+      statusEl.textContent = 'Error: ' + (e.detail?.message || JSON.stringify(e.detail));
+      statusEl.className = 'error';
+    });
+
+    lo2App.addEventListener('componentready', (e) => {
+      logMessage('EVENT: componentready!', 'success');
+    });
+
+    lo2App.addEventListener('componenterror', (e) => {
+      logMessage(`EVENT: componenterror - ${JSON.stringify(e.detail)}`, 'error');
+    });
+
+    window.addEventListener('message', (e) => {
+      if (e.origin.includes('salesforce') || e.origin.includes('force.com')) {
+        logMessage(`PostMessage: ${JSON.stringify(e.data).substring(0, 200)}`, 'warn');
+      }
+    });
+
+    // Monitor for changes
+    setInterval(() => {
+      const iframes = document.querySelectorAll('iframe');
+      if (iframes.length > 0) {
+        logMessage(`Found ${iframes.length} iframe(s)`, 'success');
+      }
+    }, 2000);
+
+    logMessage('Page loaded, waiting for LO2 script...', 'info');
+  </script>
+
+  <!-- Script loaded at the end -->
+  <script
+    src="https://warranty2amartfurniture--amartuat.sandbox.my.salesforce.com/lightning/lightning.out.latest/index.iife.prod.js"
+    onload="logMessage('LO2 script loaded!', 'success');"
+    onerror="logMessage('Failed to load LO2 script!', 'error');">
+  </script>
 </body>
 </html>
