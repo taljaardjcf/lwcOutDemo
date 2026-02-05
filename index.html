@@ -3,98 +3,156 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>StoreConnect POS Actions 3.0</title>
+  <title>StoreConnect POS Actions - Lightning Out 2.0</title>
   <style>
-    body { margin: 0; padding: 0; font-family: 'Salesforce Sans', Arial, sans-serif; }
-    #status { padding: 12px; margin: 12px; color: #444; background: #f3f3f3; border-radius: 4px; }
+    body { margin: 0; padding: 20px; font-family: 'Salesforce Sans', Arial, sans-serif; }
+    #status { padding: 12px; margin-bottom: 20px; color: #444; background: #f3f3f3; border-radius: 4px; }
     #status.error { color: #b00020; background: #ffebee; }
+    #status.success { color: #2e7d32; background: #e8f5e9; }
     #lo2-container { width: 100%; min-height: 500px; }
+    #logs { background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 4px; font-family: monospace; font-size: 11px; max-height: 200px; overflow-y: auto; margin-top: 20px; }
+    .log-info { color: #4fc3f7; }
+    .log-success { color: #81c784; }
+    .log-error { color: #ef5350; }
   </style>
-
-  <!-- ✅ Use Aura Site loader script -->
-  <script
-    src="https://warranty2amartfurniture--amartuat.sandbox.my.site.com/posactions/lightning/lightning.out.latest/index.iife.prod.js"
-    onload="window.LO2_READY = true;"
-    onerror="console.error('LO2 script failed to load!')"
-    async
-  ></script>
 </head>
 <body>
-  <div id="status">Initializing Lightning Out 2.0...</div>
+  <h2>StoreConnect POS Actions - Lightning Out 2.0</h2>
+  <div id="status">Initializing...</div>
   <div id="lo2-container"></div>
+  <div id="logs"></div>
+
+  <!-- LO2 Script from EC Site -->
+  <script
+    src="https://warranty2amartfurniture--amartuat.sandbox.my.site.com/posactions/lightning/lightning.out.latest/index.iife.prod.js"
+    onload="window.LO2_READY = true; log('LO2 script loaded', 'success');"
+    onerror="log('Failed to load LO2 script!', 'error');"
+    async
+  ></script>
 
   <script>
-    (function () {
-      const APP_ID = '1Us9n00000000mPCAQ';
-      const COMPONENT = 'c:posActionsHostLWC';
-      const RAILWAY_PROXY = 'https://sc-auth-amart-production.up.railway.app';
-      const ENV = 'uat';
+    const APP_ID = '1Us9n00000000mPCAQ';
+    const COMPONENT = 'pos-actions-host-lwc';
+    const RAILWAY_PROXY = 'https://sc-auth-amart-production.up.railway.app';
+    const ENV = 'uat';
 
-      const statusEl = document.getElementById('status');
-      const container = document.getElementById('lo2-container');
+    const statusEl = document.getElementById('status');
+    const container = document.getElementById('lo2-container');
+    const logsEl = document.getElementById('logs');
 
-      function setStatus(msg, isError = false) {
-        statusEl.textContent = msg;
-        statusEl.className = isError ? 'error' : '';
-        console.log('[LO2]', msg);
-      }
+    function log(msg, type = 'info') {
+      const timestamp = new Date().toISOString().split('T')[1].slice(0, 12);
+      const line = document.createElement('div');
+      line.className = 'log-' + type;
+      line.textContent = '[' + timestamp + '] ' + msg;
+      logsEl.appendChild(line);
+      logsEl.scrollTop = logsEl.scrollHeight;
+      console.log('[LO2:' + type + '] ' + msg);
+    }
 
-      async function waitForLightningGlobal() {
-        while (typeof $Lightning === 'undefined') {
-          await new Promise((r) => setTimeout(r, 50));
-        }
-      }
+    function setStatus(msg, type) {
+      log(msg, type || 'info');
+      statusEl.textContent = msg;
+      statusEl.className = type || '';
+    }
 
-      async function bootstrapSession(frontdoorUrl) {
-        return new Promise((resolve) => {
-          const iframe = document.createElement('iframe');
-          iframe.style.display = 'none';
-          iframe.src = frontdoorUrl;
-          iframe.onload = () => {
-            document.body.removeChild(iframe);
+    function waitForLO2() {
+      if (window.LO2_READY) return Promise.resolve();
+      return new Promise((resolve, reject) => {
+        let attempts = 0;
+        const check = setInterval(() => {
+          attempts++;
+          if (window.LO2_READY) {
+            clearInterval(check);
             resolve();
-          };
-          document.body.appendChild(iframe);
+          } else if (attempts > 100) {
+            clearInterval(check);
+            reject(new Error('Timeout waiting for LO2 script'));
+          }
+        }, 50);
+      });
+    }
+
+    async function init() {
+      try {
+        log('=== Starting LO2 initialization ===');
+
+        await waitForLO2();
+
+        setStatus('Fetching frontdoor URL...');
+        const resp = await fetch(RAILWAY_PROXY + '/api/lo2/frontdoor', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ env: ENV, appId: APP_ID })
         });
-      }
 
-      async function init() {
-        try {
-          setStatus('Fetching frontdoor URL...');
-          const resp = await fetch(`${RAILWAY_PROXY}/api/lo2/frontdoor`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ env: ENV, appId: APP_ID })
-          });
+        const data = await resp.json();
+        log('Response: ' + JSON.stringify(data), resp.ok ? 'success' : 'error');
 
-          const data = await resp.json();
-          if (!resp.ok || !data.frontdoorUrl) throw new Error(data.error || 'No frontdoor URL returned');
-
-          setStatus('Bootstrapping session...');
-          await bootstrapSession(data.frontdoorUrl);
-
-          setStatus('Waiting for Lightning runtime...');
-          await waitForLightningGlobal();
-
-          setStatus('Initializing Lightning App...');
-          $Lightning.use(APP_ID, () => {
-            $Lightning.createComponent(COMPONENT, {}, container, (cmp) => {
-              console.log('[LO2] Component created', cmp);
-              setStatus('Component loaded!');
-            });
-          }, data.frontdoorUrl);
-        } catch (err) {
-          console.error('[LO2] ERROR:', err);
-          setStatus('Error: ' + err.message, true);
+        if (!resp.ok || !data.frontdoorUrl) {
+          throw new Error(data.error || 'No frontdoor URL returned');
         }
-      }
 
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
-      } else {
-        init();
+        log('Frontdoor URL: ' + data.frontdoorUrl);
+        setStatus('Creating LO2 application...');
+
+        // Create LO2 web component
+        const lo2App = document.createElement('lightning-out-application');
+        lo2App.setAttribute('app-id', APP_ID);
+        lo2App.setAttribute('components', COMPONENT);
+        lo2App.setAttribute('frontdoor-url', data.frontdoorUrl);
+
+        lo2App.addEventListener('applicationready', function() {
+          log('EVENT: applicationready', 'success');
+          setStatus('Application ready!', 'success');
+
+          // Create component
+          const component = document.createElement(COMPONENT);
+          container.appendChild(component);
+          log('Component element created');
+        });
+
+        lo2App.addEventListener('applicationerror', function(e) {
+          log('EVENT: applicationerror - ' + JSON.stringify(e.detail), 'error');
+          setStatus('Error: ' + (e.detail?.message || JSON.stringify(e.detail)), 'error');
+        });
+
+        lo2App.addEventListener('componentready', function() {
+          log('EVENT: componentready', 'success');
+        });
+
+        lo2App.addEventListener('componenterror', function(e) {
+          log('EVENT: componenterror - ' + JSON.stringify(e.detail), 'error');
+        });
+
+        // Listen for postMessages from Salesforce
+        window.addEventListener('message', function(e) {
+          if (e.origin.includes('salesforce') || e.origin.includes('force.com') || e.origin.includes('site.com')) {
+            log('PostMessage from ' + e.origin, 'info');
+          }
+        });
+
+        container.appendChild(lo2App);
+        setStatus('Waiting for LO2...');
+
+        // Monitor for iframes
+        setTimeout(function() {
+          const iframes = document.querySelectorAll('iframe');
+          log('Iframes after 3s: ' + iframes.length, iframes.length > 0 ? 'success' : 'info');
+        }, 3000);
+
+      } catch (err) {
+        log('ERROR: ' + err.message, 'error');
+        setStatus('Error: ' + err.message, 'error');
       }
-    })();
+    }
+
+    log('Page loaded');
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
   </script>
 </body>
 </html>
