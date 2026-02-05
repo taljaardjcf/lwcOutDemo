@@ -1,108 +1,140 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Lightning Out 2.0 - Declarative (Non-Experience Cloud)</title>
+  <title>Lightning Out 2.0 - Programmatic Bootstrap</title>
   <link rel="icon" href="data:,">
   <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      padding: 20px;
-    }
-    #status {
-      padding: 12px;
-      margin-bottom: 20px;
-      background: #f5f5f5;
-      border-radius: 4px;
-    }
-    #status.error {
-      background: #ffebee;
-      color: #c62828;
-    }
-    #status.success {
-      background: #e8f5e9;
-      color: #2e7d32;
-    }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; }
+    #status { padding: 12px; margin-bottom: 20px; background: #f5f5f5; border-radius: 4px; }
+    #status.error { background: #ffebee; color: #c62828; }
+    #status.success { background: #e8f5e9; color: #2e7d32; }
     #logs {
-      background: #1e1e1e;
-      color: #d4d4d4;
-      padding: 12px;
-      border-radius: 4px;
-      font-family: monospace;
-      font-size: 12px;
-      max-height: 300px;
-      overflow-y: auto;
+      background: #1e1e1e; color: #d4d4d4; padding: 12px;
+      border-radius: 4px; font-family: monospace; font-size: 12px;
+      max-height: 300px; overflow-y: auto;
     }
     .log-info { color: #4fc3f7; }
     .log-success { color: #81c784; }
     .log-error { color: #ef5350; }
     .log-warn { color: #ffb74d; }
   </style>
+  <script
+    src="https://warranty2amartfurniture--amartuat.sandbox.my.salesforce.com/lightning/lightning.out.latest/index.iife.prod.js"
+    onload="log('LO2 script loaded', 'success')"
+    onerror="log('LO2 script failed to load', 'error')"
+    async>
+  </script>
 </head>
 <body>
-  <h1>Lightning Out 2.0 - Non-Experience Cloud</h1>
+  <h1>Lightning Out 2.0 - Programmatic (No Experience Cloud)</h1>
   <div id="status">Initializing...</div>
-
-  <!-- Declarative Lightning Out 2.0 app -->
-  <lightning-out-application
-    app-id="1Us9n00000000mPCAQ"
-    components="pos-actions-host-lwc">
-  </lightning-out-application>
-
-  <div id="component-container"></div>
-
-  <h3>Debug Logs</h3>
+  <div id="lo2-container"></div>
+  <h3>Logs</h3>
   <div id="logs"></div>
 
   <script>
-    const logsEl = document.getElementById('logs');
     const statusEl = document.getElementById('status');
-    const container = document.getElementById('component-container');
+    const container = document.getElementById('lo2-container');
+    const logsEl = document.getElementById('logs');
+
+    const RAILWAY_PROXY = 'https://sc-auth-amart-production.up.railway.app';
+    const ENV = 'uat';
+    const APP_ID = '1Us9n00000000mPCAQ';
+    const COMPONENTS = 'c-pos-actions-host-lwc';
 
     function log(msg, type = 'info') {
-      const timestamp = new Date().toISOString().split('T')[1].slice(0, 12);
-      const entry = document.createElement('div');
-      entry.className = `log-${type}`;
-      entry.textContent = `[${timestamp}] ${msg}`;
-      logsEl.appendChild(entry);
+      const line = document.createElement('div');
+      const ts = new Date().toISOString().split('T')[1].split('.')[0];
+      line.textContent = `[${ts}] ${msg}`;
+      line.className = `log-${type}`;
+      logsEl.appendChild(line);
       console.log(`[LO2:${type}] ${msg}`);
     }
 
-    const lo2App = document.querySelector('lightning-out-application');
+    function setStatus(msg, type = '') {
+      statusEl.textContent = msg;
+      statusEl.className = type;
+    }
 
-    lo2App.addEventListener('applicationready', () => {
-      log('applicationready', 'success');
-      statusEl.textContent = 'Application ready. Loading component...';
-      statusEl.className = 'success';
+    function waitForRuntime() {
+      if (window.LO2_READY) return Promise.resolve();
+      return new Promise((resolve) => {
+        const check = setInterval(() => {
+          if (window.LO2_READY) {
+            clearInterval(check);
+            resolve();
+          }
+        }, 50);
+      });
+    }
 
-      const component = document.createElement('pos-actions-host-lwc');
-      container.appendChild(component);
-      log('Component injected', 'info');
-    });
+    async function initLO2() {
+      setStatus('Getting frontdoor URL...');
+      try {
+        const res = await fetch(`${RAILWAY_PROXY}/api/lo2/frontdoor`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ env: ENV, appId: APP_ID })
+        });
 
-    lo2App.addEventListener('applicationerror', (e) => {
-      const msg = e.detail?.message || JSON.stringify(e.detail);
-      log(`applicationerror: ${msg}`, 'error');
-      statusEl.textContent = 'Error: ' + msg;
-      statusEl.className = 'error';
-    });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to get frontdoor URL');
 
-    lo2App.addEventListener('componentready', () => {
-      log('componentready', 'success');
-      statusEl.textContent = 'Component loaded!';
-    });
+        const { frontdoorUrl } = data;
+        log(`Frontdoor URL received`, 'success');
 
-    lo2App.addEventListener('componenterror', (e) => {
-      const msg = e.detail?.message || JSON.stringify(e.detail);
-      log(`componenterror: ${msg}`, 'error');
-    });
+        setStatus('Bootstrapping session...');
+        await new Promise((resolve) => {
+          const iframe = document.createElement('iframe');
+          iframe.style.display = 'none';
+          iframe.src = frontdoorUrl;
+          iframe.onload = () => {
+            log('Frontdoor session bootstrapped via iframe', 'info');
+            document.body.removeChild(iframe);
+            resolve();
+          };
+          document.body.appendChild(iframe);
+        });
 
-    log('Page initialized, waiting for LO2...');
-  </script>
+        await waitForRuntime();
 
-  <script
-    src="https://warranty2amartfurniture--amartuat.sandbox.my.salesforce.com/lightning/lightning.out.latest/index.iife.prod.js"
-    onload="log('LO2 runtime loaded', 'success')"
-    onerror="log('Failed to load LO2 script!', 'error')">
+        setStatus('Creating Lightning Out App...');
+        const lo2App = document.createElement('lightning-out-application');
+        lo2App.setAttribute('app-id', APP_ID);
+        lo2App.setAttribute('components', COMPONENTS);
+
+        lo2App.addEventListener('applicationready', () => {
+          log('Application ready', 'success');
+          setStatus('Application ready!', 'success');
+
+          const component = document.createElement('c-pos-actions-host-lwc');
+          container.appendChild(component);
+          log('Component instantiated', 'info');
+        });
+
+        lo2App.addEventListener('applicationerror', (e) => {
+          log(`App error: ${e.detail?.message || JSON.stringify(e.detail)}`, 'error');
+          setStatus('App error', 'error');
+        });
+
+        lo2App.addEventListener('componentready', () => {
+          log('Component ready', 'success');
+          setStatus('Component loaded!', 'success');
+        });
+
+        container.appendChild(lo2App);
+        setStatus('Waiting for component...');
+      } catch (err) {
+        log('Fatal error: ' + err.message, 'error');
+        setStatus('Error: ' + err.message, 'error');
+      }
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initLO2);
+    } else {
+      initLO2();
+    }
   </script>
 </body>
 </html>
