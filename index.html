@@ -3,51 +3,47 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>StoreConnect POS Actions - Lightning Out 2.0</title>
+  <title>StoreConnect POS Actions - Lightning Out</title>
   <style>
     body { margin: 0; padding: 20px; font-family: 'Salesforce Sans', Arial, sans-serif; }
     #status { padding: 12px; margin-bottom: 20px; color: #444; background: #f3f3f3; border-radius: 4px; }
     #status.error { color: #b00020; background: #ffebee; }
     #status.success { color: #2e7d32; background: #e8f5e9; }
-    #lo2-container { width: 100%; min-height: 500px; }
+    #container { width: 100%; min-height: 500px; }
     #logs { background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 4px; font-family: monospace; font-size: 11px; max-height: 200px; overflow-y: auto; margin-top: 20px; }
     .log-info { color: #4fc3f7; }
     .log-success { color: #81c784; }
     .log-error { color: #ef5350; }
   </style>
+  <!-- Classic Lightning Out script from EC Site -->
+  <script src="https://warranty2amartfurniture--amartuat.sandbox.my.site.com/posactions/lightning/lightning.out.js"></script>
 </head>
 <body>
-  <h2>StoreConnect POS Actions - Lightning Out 2.0</h2>
+  <h2>StoreConnect POS Actions - Lightning Out</h2>
   <div id="status">Initializing...</div>
-  <div id="lo2-container"></div>
+  <div id="container"></div>
   <div id="logs"></div>
 
-  <!-- LO2 Script from EC Site -->
-  <script
-    src="https://warranty2amartfurniture--amartuat.sandbox.my.site.com/posactions/lightning/lightning.out.latest/index.iife.prod.js"
-    onload="window.LO2_READY = true; log('LO2 script loaded', 'success');"
-    onerror="log('Failed to load LO2 script!', 'error');"
-    async
-  ></script>
-
   <script>
-    const APP_ID = '1Us9n00000000mPCAQ';
-    const COMPONENT = 'pos-actions-host-lwc';
+    const APP_NAME = 'c:posActionsOutApp';  // Your Lightning Out App that extends ltng:outApp
+    const COMPONENT = 'c:posActionsHostLWC';
     const RAILWAY_PROXY = 'https://sc-auth-amart-production.up.railway.app';
     const ENV = 'uat';
+    const EC_SITE = 'https://warranty2amartfurniture--amartuat.sandbox.my.site.com/posactions';
 
     const statusEl = document.getElementById('status');
-    const container = document.getElementById('lo2-container');
+    const container = document.getElementById('container');
     const logsEl = document.getElementById('logs');
 
-    function log(msg, type = 'info') {
-      const timestamp = new Date().toISOString().split('T')[1].slice(0, 12);
-      const line = document.createElement('div');
+    function log(msg, type) {
+      type = type || 'info';
+      var timestamp = new Date().toISOString().split('T')[1].slice(0, 12);
+      var line = document.createElement('div');
       line.className = 'log-' + type;
       line.textContent = '[' + timestamp + '] ' + msg;
       logsEl.appendChild(line);
       logsEl.scrollTop = logsEl.scrollHeight;
-      console.log('[LO2:' + type + '] ' + msg);
+      console.log('[LO:' + type + '] ' + msg);
     }
 
     function setStatus(msg, type) {
@@ -56,37 +52,23 @@
       statusEl.className = type || '';
     }
 
-    function waitForLO2() {
-      if (window.LO2_READY) return Promise.resolve();
-      return new Promise((resolve, reject) => {
-        let attempts = 0;
-        const check = setInterval(() => {
-          attempts++;
-          if (window.LO2_READY) {
-            clearInterval(check);
-            resolve();
-          } else if (attempts > 100) {
-            clearInterval(check);
-            reject(new Error('Timeout waiting for LO2 script'));
-          }
-        }, 50);
-      });
-    }
-
     async function init() {
       try {
-        log('=== Starting LO2 initialization ===');
+        log('=== Starting Lightning Out initialization ===');
+        log('$Lightning available: ' + (typeof $Lightning !== 'undefined'), typeof $Lightning !== 'undefined' ? 'success' : 'error');
 
-        await waitForLO2();
+        if (typeof $Lightning === 'undefined') {
+          throw new Error('$Lightning not available - script may not have loaded');
+        }
 
         setStatus('Fetching frontdoor URL...');
-        const resp = await fetch(RAILWAY_PROXY + '/api/lo2/frontdoor', {
+        var resp = await fetch(RAILWAY_PROXY + '/api/lo2/frontdoor', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ env: ENV, appId: APP_ID })
+          body: JSON.stringify({ env: ENV, appId: null })
         });
 
-        const data = await resp.json();
+        var data = await resp.json();
         log('Response: ' + JSON.stringify(data), resp.ok ? 'success' : 'error');
 
         if (!resp.ok || !data.frontdoorUrl) {
@@ -94,55 +76,34 @@
         }
 
         log('Frontdoor URL: ' + data.frontdoorUrl);
-        setStatus('Creating LO2 application...');
 
-        // Create LO2 web component
-        const lo2App = document.createElement('lightning-out-application');
-        lo2App.setAttribute('app-id', APP_ID);
-        lo2App.setAttribute('components', COMPONENT);
-        lo2App.setAttribute('frontdoor-url', data.frontdoorUrl);
+        setStatus('Calling $Lightning.use()...');
+        log('App: ' + APP_NAME);
+        log('EC Site: ' + EC_SITE);
 
-        lo2App.addEventListener('applicationready', function() {
-          log('EVENT: applicationready', 'success');
-          setStatus('Application ready!', 'success');
+        $Lightning.use(APP_NAME, function() {
+          log('$Lightning.use() callback fired!', 'success');
+          setStatus('Creating component...');
 
-          // Create component
-          const component = document.createElement(COMPONENT);
-          container.appendChild(component);
-          log('Component element created');
-        });
-
-        lo2App.addEventListener('applicationerror', function(e) {
-          log('EVENT: applicationerror - ' + JSON.stringify(e.detail), 'error');
-          setStatus('Error: ' + (e.detail?.message || JSON.stringify(e.detail)), 'error');
-        });
-
-        lo2App.addEventListener('componentready', function() {
-          log('EVENT: componentready', 'success');
-        });
-
-        lo2App.addEventListener('componenterror', function(e) {
-          log('EVENT: componenterror - ' + JSON.stringify(e.detail), 'error');
-        });
-
-        // Listen for postMessages from Salesforce
-        window.addEventListener('message', function(e) {
-          if (e.origin.includes('salesforce') || e.origin.includes('force.com') || e.origin.includes('site.com')) {
-            log('PostMessage from ' + e.origin, 'info');
-          }
-        });
-
-        container.appendChild(lo2App);
-        setStatus('Waiting for LO2...');
-
-        // Monitor for iframes
-        setTimeout(function() {
-          const iframes = document.querySelectorAll('iframe');
-          log('Iframes after 3s: ' + iframes.length, iframes.length > 0 ? 'success' : 'info');
-        }, 3000);
+          $Lightning.createComponent(
+            COMPONENT,
+            {},  // attributes
+            container,
+            function(cmp) {
+              if (cmp) {
+                log('Component created successfully!', 'success');
+                setStatus('Component loaded!', 'success');
+              } else {
+                log('Component creation returned null/undefined', 'error');
+                setStatus('Component creation failed', 'error');
+              }
+            }
+          );
+        }, EC_SITE, data.frontdoorUrl);  // Pass EC site URL and frontdoor URL
 
       } catch (err) {
         log('ERROR: ' + err.message, 'error');
+        if (err.stack) log('Stack: ' + err.stack, 'error');
         setStatus('Error: ' + err.message, 'error');
       }
     }
