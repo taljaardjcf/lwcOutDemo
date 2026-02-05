@@ -8,10 +8,26 @@
     #status { padding: 12px; margin-bottom: 20px; background: #f5f5f5; border-radius: 4px; }
     #status.error { background: #ffebee; color: #c62828; }
     #status.success { background: #e8f5e9; color: #2e7d32; }
+    #logs { 
+      background: #1e1e1e; 
+      color: #d4d4d4; 
+      padding: 12px; 
+      border-radius: 4px; 
+      font-family: monospace; 
+      font-size: 12px;
+      max-height: 300px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+    }
+    .log-info { color: #4fc3f7; }
+    .log-success { color: #81c784; }
+    .log-error { color: #ef5350; }
+    .log-warn { color: #ffb74d; }
   </style>
   <script
     src="https://warranty2amartfurniture--amartuat.sandbox.my.site.com/storeconnect/lightning/lightning.out.latest/index.iife.prod.js"
-    onload="window.LO2_READY = true;"
+    onload="window.LO2_READY = true; window.logMessage && window.logMessage('LO2 script loaded', 'success');"
+    onerror="window.logMessage && window.logMessage('Failed to load LO2 script!', 'error');"
     async>
   </script>
 </head>
@@ -19,6 +35,8 @@
   <h1>Lightning Out 2.0 - LWC Out 2.0</h1>
   <div id="status">Initializing...</div>
   <div id="lo2-container"></div>
+  <h3>Debug Logs:</h3>
+  <div id="logs"></div>
 
  <script>
   (function () {
@@ -30,72 +48,162 @@
 
     const statusEl = document.getElementById('status');
     const container = document.getElementById('lo2-container');
+    const logsEl = document.getElementById('logs');
+
+    // Logging utility
+    window.logMessage = function(msg, type = 'info') {
+      const timestamp = new Date().toISOString().split('T')[1].slice(0, 12);
+      const logLine = document.createElement('div');
+      logLine.className = `log-${type}`;
+      logLine.textContent = `[${timestamp}] ${msg}`;
+      logsEl.appendChild(logLine);
+      logsEl.scrollTop = logsEl.scrollHeight;
+      console.log(`[LO2:${type}] ${msg}`);
+    };
 
     function setStatus(msg, type) {
-      console.log(`[LO2] ${msg}`);
+      logMessage(msg, type || 'info');
       statusEl.textContent = msg;
       statusEl.className = type || '';
     }
 
     function waitForRuntime() {
-      if (window.LO2_READY) return Promise.resolve();
+      logMessage('Waiting for LO2 runtime...', 'info');
+      if (window.LO2_READY) {
+        logMessage('LO2 runtime already available', 'success');
+        return Promise.resolve();
+      }
       return new Promise((resolve) => {
+        let attempts = 0;
         const check = setInterval(() => {
+          attempts++;
           if (window.LO2_READY) {
             clearInterval(check);
+            logMessage(`LO2 runtime ready after ${attempts} checks`, 'success');
             resolve();
+          } else if (attempts > 100) {
+            clearInterval(check);
+            logMessage('Timeout waiting for LO2 runtime', 'error');
+            resolve(); // Continue anyway to see what happens
           }
         }, 50);
       });
     }
 
     async function init() {
+      logMessage('=== Init started ===', 'info');
+      logMessage(`Config: ENV=${ENV}, APP_ID=${APP_ID}`, 'info');
+      logMessage(`EC_SITE_URL=${EC_SITE_URL}`, 'info');
+      logMessage(`RAILWAY_PROXY=${RAILWAY_PROXY}`, 'info');
+
       try {
         await waitForRuntime();
         
         setStatus('Getting frontdoor URL...');
+        const requestBody = { 
+          env: ENV, 
+          appId: APP_ID,
+          ecSiteBaseUrl: EC_SITE_URL
+        };
+        logMessage(`Request body: ${JSON.stringify(requestBody)}`, 'info');
+
         const resp = await fetch(`${RAILWAY_PROXY}/api/lo2/frontdoor`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            env: ENV, 
-            appId: APP_ID,
-            ecSiteBaseUrl: EC_SITE_URL
-          })
+          body: JSON.stringify(requestBody)
         });
 
+        logMessage(`Response status: ${resp.status}`, resp.ok ? 'success' : 'error');
+
         const data = await resp.json();
+        logMessage(`Response data: ${JSON.stringify(data)}`, 'info');
+
         if (!resp.ok) throw new Error(data.error || 'Failed to get frontdoor URL');
-        console.log('[LO2] Got frontdoor URL:', data.frontdoorUrl);
+        
+        logMessage(`Frontdoor URL: ${data.frontdoorUrl}`, 'success');
 
         setStatus('Creating LO2 application...');
         const lo2App = document.createElement('lightning-out-application');
+        
+        logMessage(`Setting app-id: ${APP_ID}`, 'info');
         lo2App.setAttribute('app-id', APP_ID);
+        
+        logMessage(`Setting components: ${COMPONENTS}`, 'info');
         lo2App.setAttribute('components', COMPONENTS);
+        
+        logMessage(`Setting frontdoor-url: ${data.frontdoorUrl}`, 'info');
         lo2App.setAttribute('frontdoor-url', data.frontdoorUrl);
+        
+        logMessage('Setting use-iframe: true', 'info');
         lo2App.setAttribute('use-iframe', 'true');
 
         lo2App.addEventListener('applicationready', () => {
-          console.log('[LO2] Application ready!');
+          logMessage('EVENT: applicationready fired!', 'success');
           setStatus('Application ready!', 'success');
         });
 
         lo2App.addEventListener('applicationerror', (e) => {
-          console.error('[LO2] Application error:', e.detail);
+          logMessage(`EVENT: applicationerror - ${JSON.stringify(e.detail)}`, 'error');
           setStatus('Error: ' + (e.detail?.message || JSON.stringify(e.detail)), 'error');
         });
 
+        lo2App.addEventListener('componentready', (e) => {
+          logMessage(`EVENT: componentready - ${e.detail?.name || 'unknown'}`, 'success');
+        });
+
+        lo2App.addEventListener('componenterror', (e) => {
+          logMessage(`EVENT: componenterror - ${JSON.stringify(e.detail)}`, 'error');
+        });
+
+        // Listen for any iframe events
+        window.addEventListener('message', (e) => {
+          if (e.origin.includes('salesforce') || e.origin.includes('force.com') || e.origin.includes('site.com')) {
+            logMessage(`PostMessage from ${e.origin}: ${typeof e.data === 'string' ? e.data.substring(0, 200) : JSON.stringify(e.data).substring(0, 200)}`, 'warn');
+          }
+        });
+
+        logMessage('Appending lo2App to container...', 'info');
         container.appendChild(lo2App);
+        
+        logMessage('lo2App element added to DOM', 'info');
+        logMessage(`lo2App outerHTML: ${lo2App.outerHTML}`, 'info');
+        
         setStatus('Waiting for LO2 to authenticate...');
+
+        // Check for iframe after a delay
+        setTimeout(() => {
+          const iframes = container.querySelectorAll('iframe');
+          logMessage(`Iframes in container after 2s: ${iframes.length}`, iframes.length > 0 ? 'success' : 'warn');
+          iframes.forEach((iframe, i) => {
+            logMessage(`Iframe ${i}: src=${iframe.src || '(empty)'}, style=${iframe.style.cssText}`, 'info');
+          });
+        }, 2000);
+
+        // Check again after more time
+        setTimeout(() => {
+          const iframes = container.querySelectorAll('iframe');
+          logMessage(`Iframes in container after 5s: ${iframes.length}`, iframes.length > 0 ? 'success' : 'warn');
+          if (statusEl.className !== 'success') {
+            logMessage('Application not ready after 5s - may be stuck', 'warn');
+          }
+        }, 5000);
+
       } catch (err) {
-        console.error('[LO2] Error:', err);
+        logMessage(`ERROR: ${err.message}`, 'error');
+        logMessage(`Stack: ${err.stack}`, 'error');
         setStatus('Error: ' + err.message, 'error');
       }
     }
 
+    logMessage('Script loaded, waiting for DOM...', 'info');
+    
     if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', init);
+      document.addEventListener('DOMContentLoaded', () => {
+        logMessage('DOMContentLoaded fired', 'info');
+        init();
+      });
     } else {
+      logMessage('DOM already ready', 'info');
       init();
     }
   })();
