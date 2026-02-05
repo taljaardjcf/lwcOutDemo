@@ -32,7 +32,7 @@
   </script>
 </head>
 <body>
-  <h1>Lightning Out 2.0 - Non-iframe Mode</h1>
+  <h1>Lightning Out 2.0 - With Frontdoor Auth</h1>
   <div id="status">Initializing...</div>
   <div id="lo2-container"></div>
   <h3>Debug Logs:</h3>
@@ -40,8 +40,11 @@
 
  <script>
   (function () {
+    const RAILWAY_PROXY = 'https://sc-auth-amart-production.up.railway.app';
+    const ENV = 'uat';
     const APP_ID = '1Us9n00000000mPCAQ';
-    const COMPONENT_NAME = 'pos-actions-host-lwc'; // Note: no 'c-' prefix
+    const COMPONENT_NAME = 'pos-actions-host-lwc';
+    // NOT passing ecSiteBaseUrl - let it use .my.salesforce.com
 
     const statusEl = document.getElementById('status');
     const container = document.getElementById('lo2-container');
@@ -93,23 +96,41 @@
       try {
         await waitForRuntime();
         
-        setStatus('Creating LO2 application (no iframe)...');
+        // Get frontdoor URL from .my.salesforce.com (no ecSiteBaseUrl)
+        setStatus('Getting frontdoor URL...');
+        const requestBody = { 
+          env: ENV, 
+          appId: APP_ID
+          // NOT passing ecSiteBaseUrl
+        };
+        logMessage(`Request body: ${JSON.stringify(requestBody)}`, 'info');
+
+        const resp = await fetch(`${RAILWAY_PROXY}/api/lo2/frontdoor`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody)
+        });
+
+        const data = await resp.json();
+        logMessage(`Response: ${JSON.stringify(data)}`, resp.ok ? 'success' : 'error');
+        if (!resp.ok) throw new Error(data.error || 'Failed to get frontdoor URL');
+
+        setStatus('Creating LO2 application with frontdoor URL...');
         
-        // Create the lightning-out-application element
         const lo2App = document.createElement('lightning-out-application');
         lo2App.setAttribute('app-id', APP_ID);
         lo2App.setAttribute('components', COMPONENT_NAME);
-        // NOT setting frontdoor-url or use-iframe
+        lo2App.setAttribute('frontdoor-url', data.frontdoorUrl);
+        // Try without use-iframe first
 
-        logMessage(`lo2App attributes: app-id=${APP_ID}, components=${COMPONENT_NAME}`, 'info');
+        logMessage(`Attributes: app-id=${APP_ID}, components=${COMPONENT_NAME}`, 'info');
+        logMessage(`frontdoor-url=${data.frontdoorUrl}`, 'info');
 
         lo2App.addEventListener('applicationready', () => {
-          logMessage('EVENT: applicationready fired!', 'success');
-          setStatus('Application ready! Creating component...', 'success');
+          logMessage('EVENT: applicationready!', 'success');
+          setStatus('Application ready!', 'success');
           
-          // Create the component
           const component = document.createElement(COMPONENT_NAME);
-          logMessage(`Creating component: ${COMPONENT_NAME}`, 'info');
           container.appendChild(component);
           logMessage('Component added to DOM', 'success');
         });
@@ -120,7 +141,7 @@
         });
 
         lo2App.addEventListener('componentready', (e) => {
-          logMessage(`EVENT: componentready - ${JSON.stringify(e.detail)}`, 'success');
+          logMessage(`EVENT: componentready`, 'success');
           setStatus('Component loaded!', 'success');
         });
 
@@ -129,15 +150,19 @@
         });
 
         window.addEventListener('message', (e) => {
-          if (e.origin.includes('salesforce') || e.origin.includes('force.com') || e.origin.includes('site.com')) {
-            logMessage(`PostMessage from ${e.origin}: ${typeof e.data === 'string' ? e.data.substring(0, 200) : JSON.stringify(e.data).substring(0, 200)}`, 'warn');
+          if (e.origin.includes('salesforce') || e.origin.includes('force.com')) {
+            logMessage(`PostMessage from ${e.origin}: ${JSON.stringify(e.data).substring(0, 300)}`, 'warn');
           }
         });
 
-        logMessage('Appending lo2App to container...', 'info');
         container.appendChild(lo2App);
-        
-        setStatus('Waiting for LO2 application...');
+        setStatus('Waiting for LO2...');
+
+        // Check status after delays
+        setTimeout(() => {
+          const iframes = document.querySelectorAll('iframe');
+          logMessage(`Iframes after 3s: ${iframes.length}`, iframes.length > 0 ? 'info' : 'warn');
+        }, 3000);
 
       } catch (err) {
         logMessage(`ERROR: ${err.message}`, 'error');
