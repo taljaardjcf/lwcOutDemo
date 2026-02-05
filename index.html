@@ -9,20 +9,22 @@
     #status.success { background: #e8f5e9; color: #2e7d32; }
     #status.error { background: #ffebee; color: #c62828; }
   </style>
+
+  <!-- ✅ Load from Salesforce Core domain to expose $Lightning -->
   <script
-    src="https://warranty2amartfurniture--amartuat.sandbox.my.site.com/posactions/lightning/lightning.out.latest/index.iife.prod.js"
+    src="https://warranty2amartfurniture--amartuat.sandbox.my.salesforce.com/lightning/lightning.out.latest.min.js"
     onload="window.LO2_READY = true;"
     async>
   </script>
 </head>
 <body>
-  <h2>Lightning Out 2.0 - Aura Site (Programmatic)</h2>
+  <h2>Lightning Out 2.0 - Aura Site (Programmatic 2)</h2>
   <div id="status">Initializing...</div>
   <div id="container"></div>
 
   <script>
     const APP_ID = '1Us9n00000000mPCAQ';
-    const COMPONENTS = ['c:posActionsHostLWC'];
+    const COMPONENT = 'c:posActionsHostLWC';
     const ENV = 'uat';
     const RAILWAY_PROXY = 'https://sc-auth-amart-production.up.railway.app';
     const statusEl = document.getElementById('status');
@@ -48,6 +50,12 @@
       });
     }
 
+    async function waitForLightningOut() {
+      while (typeof $Lightning === 'undefined') {
+        await new Promise(r => setTimeout(r, 50));
+      }
+    }
+
     async function init() {
       try {
         setStatus('Getting frontdoor URL...');
@@ -62,21 +70,24 @@
           throw new Error(data.error || 'No frontdoor URL received');
         }
 
+        // ✅ Ensure frontdoor URL uses my.site.com (Experience Cloud)
+        if (!data.frontdoorUrl.includes('my.site.com')) {
+          throw new Error('Frontdoor URL must use Experience Cloud domain (my.site.com), not my.salesforce.com');
+        }
+
         setStatus('Bootstrapping session...');
         await bootstrapSession(data.frontdoorUrl);
 
         setStatus('Waiting for Lightning Out runtime...');
-        while (!window.LO2_READY) {
-          await new Promise(r => setTimeout(r, 50));
-        }
+        await waitForLightningOut();
 
         setStatus('Creating Lightning Out app...');
         $Lightning.use(APP_ID, () => {
           $Lightning.createComponent(
-            'c:posActionsHostLWC',
+            COMPONENT,
             {},
             container,
-            (cmp) => {
+            cmp => {
               console.log('[LO2] Component created', cmp);
               setStatus('Component loaded!', 'success');
             }
