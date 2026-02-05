@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Lightning Out 2.0 - Programmatic (Aura Site)</title>
+  <title>Lightning Out 2.0 - Aura Site (Programmatic)</title>
   <link rel="icon" href="data:,">
   <style>
     body { font-family: sans-serif; padding: 20px; }
@@ -9,16 +9,17 @@
     #status.success { background: #e8f5e9; color: #2e7d32; }
     #status.error { background: #ffebee; color: #c62828; }
   </style>
-
-  <!-- ⚠️ Make sure this script is from the *Aura* Experience Site domain -->
-  <script
-    src="https://warranty2amartfurniture--amartuat.sandbox.my.site.com/posactions/lightning/lightning.out.latest.min.js">
-  </script>
 </head>
 <body>
-  <h2>Lightning Out 2.0 - Aura Site (Programmatic)</h2>
+  <h2>Lightning Out 2.0 - Aura Site (Programmatic 2.0)</h2>
   <div id="status">Initializing...</div>
   <div id="container"></div>
+
+  <!-- 1. Load LO2 runtime from your *Aura* Experience Site (NOT from login.salesforce.com) -->
+  <script
+    src="https://warranty2amartfurniture--amartuat.sandbox.my.site.com/posactions/lightning/lightning.out.latest.min.js"
+    onload="window.LO2_READY = true;">
+  </script>
 
   <script>
     const APP_ID = '1Us9n00000000mPCAQ';
@@ -43,11 +44,14 @@
     async function init() {
       try {
         setStatus('Fetching frontdoor URL...');
-
         const resp = await fetch(`${RAILWAY_PROXY}/api/lo2/frontdoor`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ env: ENV, appId: APP_ID })
+          body: JSON.stringify({
+            env: ENV,
+            appId: APP_ID,
+            ecSiteBaseUrl: 'https://warranty2amartfurniture--amartuat.sandbox.my.site.com'
+          })
         });
 
         const { frontdoorUrl, error } = await resp.json();
