@@ -28,20 +28,21 @@
   <h1>Lightning Out 2.0 - Declarative</h1>
   <div id="status">Initializing...</div>
   
-  <!-- Declarative LO2 elements - like the working example -->
+  <!-- Empty LO2 application element - NO children -->
   <lightning-out-application 
     app-id="1Us9n00000000mPCAQ" 
-    components="pos-actions-host-lwc">
-  </lightning-out-application>
-  <pos-actions-host-lwc></pos-actions-host-lwc>
+    components="pos-actions-host-lwc"></lightning-out-application>
+  
+  <!-- Component container - component will be added here after app is ready -->
+  <div id="component-container"></div>
 
   <h3>Debug Logs:</h3>
   <div id="logs"></div>
 
-  <!-- Load the LO2 script AFTER the elements are in the DOM -->
   <script>
     const logsEl = document.getElementById('logs');
     const statusEl = document.getElementById('status');
+    const componentContainer = document.getElementById('component-container');
 
     window.logMessage = function(msg, type = 'info') {
       const timestamp = new Date().toISOString().split('T')[1].slice(0, 12);
@@ -52,13 +53,17 @@
       console.log(`[LO2:${type}] ${msg}`);
     };
 
-    // Listen for LO2 events
     const lo2App = document.querySelector('lightning-out-application');
     
     lo2App.addEventListener('applicationready', () => {
       logMessage('EVENT: applicationready!', 'success');
-      statusEl.textContent = 'Application ready!';
+      statusEl.textContent = 'Application ready! Creating component...';
       statusEl.className = 'success';
+      
+      // Create component after app is ready
+      const component = document.createElement('pos-actions-host-lwc');
+      componentContainer.appendChild(component);
+      logMessage('Component element created', 'info');
     });
 
     lo2App.addEventListener('applicationerror', (e) => {
@@ -69,6 +74,7 @@
 
     lo2App.addEventListener('componentready', (e) => {
       logMessage('EVENT: componentready!', 'success');
+      statusEl.textContent = 'Component loaded!';
     });
 
     lo2App.addEventListener('componenterror', (e) => {
@@ -81,18 +87,9 @@
       }
     });
 
-    // Monitor for changes
-    setInterval(() => {
-      const iframes = document.querySelectorAll('iframe');
-      if (iframes.length > 0) {
-        logMessage(`Found ${iframes.length} iframe(s)`, 'success');
-      }
-    }, 2000);
-
-    logMessage('Page loaded, waiting for LO2 script...', 'info');
+    logMessage('Page loaded, LO2 elements in DOM', 'info');
   </script>
 
-  <!-- Script loaded at the end -->
   <script
     src="https://warranty2amartfurniture--amartuat.sandbox.my.salesforce.com/lightning/lightning.out.latest/index.iife.prod.js"
     onload="logMessage('LO2 script loaded!', 'success');"
