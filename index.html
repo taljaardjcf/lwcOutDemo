@@ -8,81 +8,128 @@
     #status { margin-bottom: 20px; padding: 10px; border-radius: 4px; background: #f5f5f5; }
     #status.success { background: #e8f5e9; color: #2e7d32; }
     #status.error { background: #ffebee; color: #c62828; }
+    #logs { background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 4px; font-family: monospace; font-size: 12px; max-height: 300px; overflow-y: auto; }
+    .log-info { color: #4fc3f7; }
+    .log-success { color: #81c784; }
+    .log-error { color: #ef5350; }
+    .log-warn { color: #ffb74d; }
   </style>
-
-  <!-- Load Lightning Out runtime from the Experience Site (Aura-based) -->
-  <script src="https://warranty2amartfurniture--amartuat.sandbox.my.site.com/posactions/lightning/lightning.out.latest.min.js"></script>
 </head>
 <body>
-  <h2>Lightning Out 2.0 - Aura Site (Programmatic)</h2>
+  <h2>Lightning Out - Aura Site (Programmatic 2.1)</h2>
   <div id="status">Initializing...</div>
   <div id="container"></div>
+  <h3>Debug Logs:</h3>
+  <div id="logs"></div>
 
   <script>
     const APP_ID = '1Us9n00000000mPCAQ';
     const COMPONENT = 'c:posActionsHostLWC';
     const ENV = 'uat';
     const RAILWAY_PROXY = 'https://sc-auth-amart-production.up.railway.app';
+    const SITE_URL = 'https://warranty2amartfurniture--amartuat.sandbox.my.site.com/posactions';
+
     const statusEl = document.getElementById('status');
     const container = document.getElementById('container');
+    const logsEl = document.getElementById('logs');
+
+    function log(msg, type = 'info') {
+      const timestamp = new Date().toISOString().split('T')[1].slice(0, 12);
+      const logLine = document.createElement('div');
+      logLine.className = `log-${type}`;
+      logLine.textContent = `[${timestamp}] ${msg}`;
+      logsEl.appendChild(logLine);
+      logsEl.scrollTop = logsEl.scrollHeight;
+      console.log(`[LO:${type}] ${msg}`);
+    }
 
     function setStatus(msg, type = '') {
-      console.log('[LO2]', msg);
+      log(msg, type || 'info');
       statusEl.textContent = msg;
-      statusEl.className = type ? `status ${type}` : 'status';
+      statusEl.className = type || '';
     }
 
-    async function waitForLightningGlobal() {
-      while (typeof $Lightning === 'undefined') {
-        await new Promise(r => setTimeout(r, 50));
-      }
-    }
+    // Check if $Lightning is available
+    log(`Initial $Lightning check: ${typeof $Lightning}`, typeof $Lightning !== 'undefined' ? 'success' : 'warn');
 
     async function init() {
       try {
         setStatus('Fetching frontdoor URL...');
-
         const resp = await fetch(`${RAILWAY_PROXY}/api/lo2/frontdoor`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ env: ENV, appId: APP_ID })
         });
 
-        const { frontdoorUrl, error } = await resp.json();
-        if (!resp.ok || !frontdoorUrl) throw new Error(error || 'No frontdoor URL');
+        const data = await resp.json();
+        log(`Response: ${JSON.stringify(data)}`, resp.ok ? 'success' : 'error');
+        if (!resp.ok || !data.frontdoorUrl) throw new Error(data.error || 'No frontdoor URL');
 
-        setStatus('Bootstrapping session...');
+        setStatus('Bootstrapping session via iframe...');
         await new Promise((resolve) => {
           const iframe = document.createElement('iframe');
           iframe.style.display = 'none';
-          iframe.src = frontdoorUrl;
+          iframe.src = data.frontdoorUrl;
           iframe.onload = () => {
-            console.log('[LO2] Session iframe loaded');
+            log('Session iframe loaded', 'success');
             document.body.removeChild(iframe);
+            setTimeout(resolve, 500);
+          };
+          iframe.onerror = (e) => {
+            log(`Session iframe error: ${e}`, 'error');
             resolve();
           };
           document.body.appendChild(iframe);
         });
 
-        setStatus('Waiting for Lightning runtime...');
-        await waitForLightningGlobal();
+        // Now load the Lightning Out script dynamically AFTER session is established
+        setStatus('Loading Lightning Out script...');
+        await new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = `${SITE_URL}/lightning/lightning.out.js`;
+          script.onload = () => {
+            log('Lightning Out script loaded', 'success');
+            resolve();
+          };
+          script.onerror = (e) => {
+            log(`Failed to load Lightning Out script: ${e}`, 'error');
+            reject(new Error('Failed to load Lightning Out script'));
+          };
+          document.head.appendChild(script);
+        });
 
-        setStatus('Initializing Lightning App...');
+        log(`$Lightning after script load: ${typeof $Lightning}`, typeof $Lightning !== 'undefined' ? 'success' : 'error');
+
+        if (typeof $Lightning === 'undefined') {
+          throw new Error('$Lightning is not defined after script load');
+        }
+
+        setStatus('Calling $Lightning.use()...');
         $Lightning.use(APP_ID, () => {
+          log('$Lightning.use() callback fired!', 'success');
+          setStatus('Creating component...');
+          
           $Lightning.createComponent(
             COMPONENT,
             {},
             container,
-            cmp => {
-              console.log('[LO2] Component loaded', cmp);
-              setStatus('Component loaded!', 'success');
+            (cmp) => {
+              if (cmp) {
+                log('Component created successfully', 'success');
+                setStatus('Component loaded!', 'success');
+              } else {
+                log('Component creation returned null', 'error');
+                setStatus('Component creation failed', 'error');
+              }
             }
           );
-        }, frontdoorUrl);
+        }, data.frontdoorUrl);
 
-        setStatus('Authenticating via LO2...');
+        setStatus('Waiting for Lightning...');
+
       } catch (err) {
-        console.error('[LO2] Error:', err);
+        log(`ERROR: ${err.message}`, 'error');
+        log(`Stack: ${err.stack}`, 'error');
         setStatus('Error: ' + err.message, 'error');
       }
     }
