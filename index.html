@@ -335,6 +335,7 @@
 
         hasRunOnce = true;
         runBtn.disabled = true;
+        fetchBtn.disabled = true;
 
         try {
           registerGlobalListeners();
@@ -404,6 +405,7 @@
       envSelect.addEventListener("change", () => {
         const selectedEnv = envSelect.value;
         const selectedConfig = CONFIG[selectedEnv];
+
         cachedFrontdoorUrl = "";
         frontdoorUrlEl.value = "";
         openBtn.disabled = true;
