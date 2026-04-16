@@ -6,13 +6,112 @@
   <title>StoreConnect POS Actions - Lightning Out</title> 
 </head>
 <body>
-  <script type="text/javascript" async src="https://warranty2amartfurniture--amartuat.sandbox.my.salesforce.com/lightning/lightning.out.latest/index.iife.prod.js"></script>
+  <h2>StoreConnect POS Actions - Lightning Out (Dynamic)</h2>
 
-  <h2>StoreConnect POS Actions - Lightning Out 1235</h2>
+  <div id="status">Initializing...</div>
+  <div id="app"></div>
 
-  <!-- No whitespace between tags! -->
-  <lightning-out-application app-id="1Us9n00000000mPCAQ" frontdoor-url="https://warranty2amartfurniture--amartuat.sandbox.my.salesforce.com/secur/frontdoor.jsp?otp=00D9n000002gTAv%21AQEAQOJt9Na3AJocXUD3fRis9YaeKyo8S7Gr4lX1qn04EX1T.YY11Tpy1Qyz5ry2Gg2VErYlwpxzjFjt7OvbULnPakJuerao&cshc=3000000QMHjn000002gTAv" components="pos-actions-host-lwc"></lightning-out-application>
+  <script>
+    (async function () {
+      const params = new URLSearchParams(window.location.search);
+      const env = (params.get("env") || "uat").toLowerCase();
 
-  <pos-actions-host-lwc></pos-actions-host-lwc>
+      const CONFIG = {
+        uat: {
+          orgUrl: "https://warranty2amartfurniture--amartuat.sandbox.my.salesforce.com",
+          appId: "1Us9n00000000mPCAQ"
+        },
+        prod: {
+          orgUrl: "https://warranty2amartfurniture.my.salesforce.com",
+          appId: "1UsW200000001TxKAI"
+        }
+      };
+
+      const cfg = CONFIG[env];
+      const statusEl = document.getElementById("status");
+      const appEl = document.getElementById("app");
+
+      if (!cfg) {
+        statusEl.innerText = "Invalid env. Use ?env=uat or ?env=prod";
+        return;
+      }
+
+      console.log("[TEST] env:", env);
+      console.log("[TEST] config:", cfg);
+
+      // Load LO2 script dynamically
+      const script = document.createElement("script");
+      script.src = cfg.orgUrl + "/lightning/lightning.out.latest/index.iife.prod.js";
+      script.async = true;
+
+      script.onload = async () => {
+        console.log("[TEST] LO2 script loaded");
+
+        try {
+          statusEl.innerText = "Fetching frontdoor URL...";
+
+          const resp = await fetch(
+            "https://sc-auth-amart-production.up.railway.app/api/lo2/frontdoor-site",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ env })
+            }
+          );
+
+          const data = await resp.json();
+
+          console.log("[TEST] frontdoor response:", data);
+
+          if (!resp.ok || !data.frontdoorUrl) {
+            throw new Error(data.error || "Failed to get frontdoor URL");
+          }
+
+          const frontdoorUrl = data.frontdoorUrl;
+
+          statusEl.innerText = "Initializing Lightning Out...";
+
+          // Wait for custom element
+          await customElements.whenDefined("lightning-out-application");
+
+          appEl.innerHTML = `
+            <lightning-out-application
+              app-id="${cfg.appId}"
+              frontdoor-url="${frontdoorUrl}"
+              components="c-pos-actions-host-lo2"
+            ></lightning-out-application>
+            <c-pos-actions-host-lo2></c-pos-actions-host-lo2>
+          `;
+
+          console.log("[TEST] LO2 injected");
+
+          // Extra debugging
+          setTimeout(() => {
+            console.log("[TEST] document.cookie:", document.cookie);
+
+            const resources = performance.getEntriesByType("resource")
+              .filter(r => r.name.includes("my.site.com"));
+
+            console.log("[TEST] LWR resources:", resources.map(r => ({
+              name: r.name,
+              status: r.initiatorType
+            })));
+          }, 3000);
+
+          statusEl.innerText = "Loaded";
+
+        } catch (err) {
+          console.error("[TEST] ERROR:", err);
+          statusEl.innerText = "Error: " + err.message;
+        }
+      };
+
+      script.onerror = () => {
+        statusEl.innerText = "Failed to load LO2 script";
+      };
+
+      document.head.appendChild(script);
+    })();
+  </script>
 </body>
 </html>
