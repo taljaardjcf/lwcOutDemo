@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>LO2 End-to-End Debug</title>
+  <title>Lightning Out 2.0 POC</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -52,7 +52,7 @@
     #status.ok {
       background: #edf7ed;
     }
-    #app {
+    #host {
       min-height: 120px;
       margin: 12px 0 16px;
     }
@@ -79,10 +79,11 @@
   </style>
 </head>
 <body>
-  <h2>Lightning Out 2.0 End-to-End Debug</h2>
+  <h2>Lightning Out 2.0 POC</h2>
   <p class="hint">
-    Use <code>?env=uat</code> or <code>?env=prod</code> in the URL, or change the selector below. This page fetches the real
-    frontdoor URL from Railway and prints the exact origin to whitelist in Salesforce.
+    This page uses the documented org-domain LO2 flow.
+    Whitelist this origin in Salesforce:
+    <code id="originText"></code>
   </p>
 
   <div class="controls">
@@ -97,23 +98,15 @@
       <label for="railwayUrl">Railway API base URL</label>
       <input id="railwayUrl" value="https://sc-auth-amart-production.up.railway.app" />
     </div>
-    <div>
-      <label for="siteBaseUrl">Optional siteBaseUrl override</label>
-      <input id="siteBaseUrl" placeholder="https://...my.site.com/posactions/s" />
-    </div>
-    <div>
-      <label for="originField">Origin to whitelist in Salesforce</label>
-      <input id="originField" readonly />
-    </div>
   </div>
 
   <div class="actions">
-    <button id="runBtn" type="button">Run Debug Flow</button>
+    <button id="runBtn" type="button">Run POC</button>
     <button id="reloadBtn" type="button">Reload With Selected Env</button>
   </div>
 
-  <div id="status">Ready. Click "Run Debug Flow" to start.</div>
-  <div id="app"></div>
+  <div id="status">Ready. Click "Run POC" to start.</div>
+  <div id="host"></div>
   <pre id="debug"></pre>
 
   <script>
@@ -133,21 +126,19 @@
 
       const statusEl = document.getElementById("status");
       const debugEl = document.getElementById("debug");
-      const appEl = document.getElementById("app");
+      const hostEl = document.getElementById("host");
       const envSelect = document.getElementById("envSelect");
       const railwayUrlInput = document.getElementById("railwayUrl");
-      const originField = document.getElementById("originField");
-      const siteBaseUrlInput = document.getElementById("siteBaseUrl");
       const runBtn = document.getElementById("runBtn");
       const reloadBtn = document.getElementById("reloadBtn");
+      const originText = document.getElementById("originText");
 
       const queryEnv = (new URLSearchParams(window.location.search).get("env") || "prod").toLowerCase();
       envSelect.value = CONFIG[queryEnv] ? queryEnv : "prod";
-      originField.value = window.location.origin;
+      originText.textContent = window.location.origin;
 
-      let activeRunId = 0;
-      let listenersRegistered = false;
       let loadedScriptSrc = null;
+      let listenersRegistered = false;
 
       function setStatus(message, kind) {
         statusEl.textContent = message;
@@ -157,7 +148,7 @@
       function log(title, value) {
         const line = `[${new Date().toISOString()}] ${title}${value === undefined ? "" : `: ${typeof value === "string" ? value : JSON.stringify(value, null, 2)}`}`;
         debugEl.textContent += (debugEl.textContent ? "\n" : "") + line;
-        console.log("[LO2 DEBUG]", title, value);
+        console.log("[LO2 POC]", title, value);
       }
 
       function clearDebug() {
@@ -175,6 +166,31 @@
         } catch {
           return url;
         }
+      }
+
+      function registerGlobalListeners() {
+        if (listenersRegistered) return;
+        listenersRegistered = true;
+
+        window.addEventListener("message", (event) => {
+          log("postMessage", {
+            origin: event.origin,
+            data: typeof event.data === "string" ? event.data.slice(0, 500) : event.data
+          });
+        });
+
+        window.addEventListener("error", (event) => {
+          log("window.error", {
+            message: event.message,
+            filename: event.filename,
+            lineno: event.lineno,
+            colno: event.colno
+          });
+        });
+
+        window.addEventListener("unhandledrejection", (event) => {
+          log("window.unhandledrejection", String(event.reason));
+        });
       }
 
       function loadScript(src) {
@@ -200,14 +216,10 @@
         });
       }
 
-      async function fetchFrontdoor(env) {
+      async function fetchPocFrontdoor(env, appId) {
         const base = railwayUrlInput.value.trim().replace(/\/+$/, "");
-        const url = `${base}/api/lo2/frontdoor-site`;
-        const siteBaseUrl = siteBaseUrlInput.value.trim();
-        const body = { env };
-        if (siteBaseUrl) {
-          body.siteBaseUrl = siteBaseUrl;
-        }
+        const url = `${base}/api/lo2/poc-frontdoor`;
+        const body = { env, appId };
 
         log("window.location.origin", window.location.origin);
         log("Whitelist this origin in Salesforce", window.location.origin);
@@ -240,36 +252,7 @@
         }
 
         log("frontdoorUrl", maskUrl(data.frontdoorUrl));
-        if (data.siteBaseUrl) {
-          log("siteBaseUrl", data.siteBaseUrl);
-        }
         return data.frontdoorUrl;
-      }
-
-      function registerGlobalListeners() {
-        if (listenersRegistered) return;
-        listenersRegistered = true;
-
-        window.addEventListener("error", (event) => {
-          log("window.error", {
-            message: event.message,
-            filename: event.filename,
-            lineno: event.lineno,
-            colno: event.colno
-          });
-        });
-
-        window.addEventListener("unhandledrejection", (event) => {
-          log("window.unhandledrejection", String(event.reason));
-        });
-
-        window.addEventListener("message", (event) => {
-          log("postMessage", {
-            origin: event.origin,
-            dataType: typeof event.data,
-            data: typeof event.data === "string" ? event.data.slice(0, 500) : event.data
-          });
-        });
       }
 
       function createLo2Elements(config, frontdoorUrl) {
@@ -279,25 +262,25 @@
         lo2App.setAttribute("frontdoor-url", frontdoorUrl);
 
         const componentEl = document.createElement(config.componentName);
-        appEl.replaceChildren(lo2App, componentEl);
 
+        hostEl.replaceChildren(lo2App, componentEl);
         return { lo2App, componentEl };
       }
 
       async function run() {
-        const runId = ++activeRunId;
         clearDebug();
-        appEl.replaceChildren();
+        hostEl.replaceChildren();
 
         const env = envSelect.value;
         const config = CONFIG[env];
+
         if (!config) {
           setStatus("Invalid environment selected.", "error");
           return;
         }
 
         if (loadedScriptSrc && loadedScriptSrc !== config.scriptSrc) {
-          setStatus("Environment changed after a Lightning Out script was already loaded. Use 'Reload With Selected Env' to switch environments safely.", "error");
+          setStatus("Environment changed after LO2 script load. Use reload to switch environments safely.", "error");
           log("Unsafe env switch blocked", {
             loadedScriptSrc,
             requestedScriptSrc: config.scriptSrc
@@ -307,38 +290,29 @@
 
         try {
           registerGlobalListeners();
+
           setStatus("Loading Lightning Out script...");
           log("Selected env", env);
-          log("Selected config", { ...config, scriptSrc: config.scriptSrc });
+          log("Selected config", config);
 
           await loadScript(config.scriptSrc);
           loadedScriptSrc = config.scriptSrc;
-          if (runId !== activeRunId) return;
 
           log("Script loaded", config.scriptSrc);
-          setStatus("Waiting for Lightning Out custom element...");
+          setStatus("Waiting for lightning-out-application custom element...");
 
           await customElements.whenDefined("lightning-out-application");
-          if (runId !== activeRunId) return;
-
           log("Custom element defined", "lightning-out-application");
-          setStatus("Fetching frontdoor URL from Railway...");
 
-          const frontdoorUrl = await fetchFrontdoor(env);
-          if (runId !== activeRunId) return;
+          setStatus("Fetching POC frontdoor URL...");
+          const frontdoorUrl = await fetchPocFrontdoor(env, config.appId);
 
           setStatus("Injecting Lightning Out application...");
-
           const { lo2App, componentEl } = createLo2Elements(config, frontdoorUrl);
 
           log("Injected appId", config.appId);
           log("Injected componentName", config.componentName);
           log("Component element created", !!componentEl);
-          log("document.cookie (immediate)", document.cookie || "<empty>");
-
-          if (!lo2App || !componentEl) {
-            throw new Error("Lightning Out elements were not created correctly.");
-          }
 
           lo2App.addEventListener("applicationready", () => {
             log("Event", "applicationready");
@@ -356,17 +330,21 @@
 
           setTimeout(() => {
             const resources = performance.getEntriesByType("resource")
-              .filter((r) => String(r.name).includes("salesforce.com") || String(r.name).includes("my.site.com") || String(r.name).includes("lightningout"))
+              .filter((r) =>
+                String(r.name).includes("salesforce.com") ||
+                String(r.name).includes("my.site.com") ||
+                String(r.name).includes("lightningout")
+              )
               .map((r) => ({
                 name: r.name,
                 initiatorType: r.initiatorType,
                 duration: Math.round(r.duration)
               }));
-            log("document.cookie (delayed)", document.cookie || "<empty>");
+
             log("Related resource timings", resources);
           }, 3000);
 
-          setStatus("Lightning Out injected. Waiting for application events...");
+          setStatus("Lightning Out injected. Waiting for events...");
         } catch (error) {
           log("Run failed", error.message || String(error));
           setStatus(`Error: ${error.message || error}`, "error");
@@ -377,14 +355,15 @@
         const selectedEnv = envSelect.value;
         const selectedConfig = CONFIG[selectedEnv];
         if (loadedScriptSrc && selectedConfig && loadedScriptSrc !== selectedConfig.scriptSrc) {
-          setStatus("You changed environments. Click 'Reload With Selected Env' before running again.", "error");
+          setStatus("Environment changed. Click 'Reload With Selected Env' before running again.", "error");
         }
       });
 
       runBtn.addEventListener("click", () => {
-        setStatus("Starting debug flow...");
+        setStatus("Starting POC...");
         run();
       });
+
       reloadBtn.addEventListener("click", () => {
         const url = new URL(window.location.href);
         url.searchParams.set("env", envSelect.value);
