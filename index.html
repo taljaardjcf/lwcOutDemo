@@ -22,7 +22,7 @@
       margin-bottom: 4px;
       font-weight: 600;
     }
-    input, select, button {
+    input, select, button, textarea {
       width: 100%;
       padding: 10px 12px;
       font-size: 14px;
@@ -36,7 +36,7 @@
     }
     .actions button {
       width: auto;
-      min-width: 160px;
+      min-width: 180px;
       cursor: pointer;
     }
     #status {
@@ -76,12 +76,21 @@
       padding: 2px 4px;
       border-radius: 4px;
     }
+    .frontdoor-box {
+      margin: 12px 0 16px;
+    }
+    #frontdoorUrl {
+      min-height: 84px;
+      resize: vertical;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
   </style>
 </head>
 <body>
   <h2>Lightning Out 2.0 POC</h2>
+
   <p class="hint">
-    This page uses the documented org-domain LO2 flow.
+    This page uses the org-domain LO2 POC flow.
     Whitelist this origin in Salesforce:
     <code id="originText"></code>
   </p>
@@ -101,11 +110,18 @@
   </div>
 
   <div class="actions">
+    <button id="fetchBtn" type="button">Get Frontdoor URL Only</button>
+    <button id="openBtn" type="button" disabled>Open Frontdoor in New Tab</button>
     <button id="runBtn" type="button">Run POC</button>
     <button id="reloadBtn" type="button">Reload With Selected Env</button>
   </div>
 
-  <div id="status">Ready. Click "Run POC" to start.</div>
+  <div class="frontdoor-box">
+    <label for="frontdoorUrl">Frontdoor URL</label>
+    <textarea id="frontdoorUrl" readonly placeholder="Frontdoor URL will appear here..."></textarea>
+  </div>
+
+  <div id="status">Ready. Click "Get Frontdoor URL Only" or "Run POC".</div>
   <div id="host"></div>
   <pre id="debug"></pre>
 
@@ -129,9 +145,12 @@
       const hostEl = document.getElementById("host");
       const envSelect = document.getElementById("envSelect");
       const railwayUrlInput = document.getElementById("railwayUrl");
+      const originText = document.getElementById("originText");
+      const frontdoorUrlEl = document.getElementById("frontdoorUrl");
+      const fetchBtn = document.getElementById("fetchBtn");
+      const openBtn = document.getElementById("openBtn");
       const runBtn = document.getElementById("runBtn");
       const reloadBtn = document.getElementById("reloadBtn");
-      const originText = document.getElementById("originText");
 
       const queryEnv = (new URLSearchParams(window.location.search).get("env") || "prod").toLowerCase();
       envSelect.value = CONFIG[queryEnv] ? queryEnv : "prod";
@@ -139,6 +158,8 @@
 
       let loadedScriptSrc = null;
       let listenersRegistered = false;
+      let hasRunOnce = false;
+      let cachedFrontdoorUrl = "";
 
       function setStatus(message, kind) {
         statusEl.textContent = message;
@@ -251,6 +272,10 @@
           throw new Error("Railway response did not include frontdoorUrl.");
         }
 
+        cachedFrontdoorUrl = data.frontdoorUrl;
+        frontdoorUrlEl.value = data.frontdoorUrl;
+        openBtn.disabled = false;
+
         log("frontdoorUrl", maskUrl(data.frontdoorUrl));
         return data.frontdoorUrl;
       }
@@ -262,25 +287,45 @@
         lo2App.setAttribute("frontdoor-url", frontdoorUrl);
 
         const componentEl = document.createElement(config.componentName);
-
         hostEl.replaceChildren(lo2App, componentEl);
+
         return { lo2App, componentEl };
       }
 
-      async function run() {
-        clearDebug();
-        hostEl.replaceChildren();
-
+      async function fetchOnly() {
         const env = envSelect.value;
         const config = CONFIG[env];
-
         if (!config) {
           setStatus("Invalid environment selected.", "error");
           return;
         }
 
+        try {
+          clearDebug();
+          setStatus("Fetching frontdoor URL...");
+          await fetchPocFrontdoor(env, config.appId);
+          setStatus("Frontdoor URL fetched successfully.", "ok");
+        } catch (error) {
+          log("Fetch only failed", error.message || String(error));
+          setStatus(`Error: ${error.message || error}`, "error");
+        }
+      }
+
+      async function run() {
+        const env = envSelect.value;
+        const config = CONFIG[env];
+        if (!config) {
+          setStatus("Invalid environment selected.", "error");
+          return;
+        }
+
+        if (hasRunOnce) {
+          setStatus("This page already ran once. Reload the page before running again.", "error");
+          return;
+        }
+
         if (loadedScriptSrc && loadedScriptSrc !== config.scriptSrc) {
-          setStatus("Environment changed after LO2 script load. Use reload to switch environments safely.", "error");
+          setStatus("Environment changed after LO2 script load. Use reload to switch safely.", "error");
           log("Unsafe env switch blocked", {
             loadedScriptSrc,
             requestedScriptSrc: config.scriptSrc
@@ -288,8 +333,13 @@
           return;
         }
 
+        hasRunOnce = true;
+        runBtn.disabled = true;
+
         try {
           registerGlobalListeners();
+          clearDebug();
+          hostEl.replaceChildren();
 
           setStatus("Loading Lightning Out script...");
           log("Selected env", env);
@@ -304,8 +354,8 @@
           await customElements.whenDefined("lightning-out-application");
           log("Custom element defined", "lightning-out-application");
 
-          setStatus("Fetching POC frontdoor URL...");
-          const frontdoorUrl = await fetchPocFrontdoor(env, config.appId);
+          setStatus("Fetching frontdoor URL...");
+          const frontdoorUrl = cachedFrontdoorUrl || await fetchPocFrontdoor(env, config.appId);
 
           setStatus("Injecting Lightning Out application...");
           const { lo2App, componentEl } = createLo2Elements(config, frontdoorUrl);
@@ -354,15 +404,26 @@
       envSelect.addEventListener("change", () => {
         const selectedEnv = envSelect.value;
         const selectedConfig = CONFIG[selectedEnv];
+        cachedFrontdoorUrl = "";
+        frontdoorUrlEl.value = "";
+        openBtn.disabled = true;
+
         if (loadedScriptSrc && selectedConfig && loadedScriptSrc !== selectedConfig.scriptSrc) {
           setStatus("Environment changed. Click 'Reload With Selected Env' before running again.", "error");
         }
       });
 
-      runBtn.addEventListener("click", () => {
-        setStatus("Starting POC...");
-        run();
+      fetchBtn.addEventListener("click", fetchOnly);
+
+      openBtn.addEventListener("click", () => {
+        if (!cachedFrontdoorUrl) {
+          setStatus("Fetch a frontdoor URL first.", "error");
+          return;
+        }
+        window.open(cachedFrontdoorUrl, "_blank", "noopener,noreferrer");
       });
+
+      runBtn.addEventListener("click", run);
 
       reloadBtn.addEventListener("click", () => {
         const url = new URL(window.location.href);
