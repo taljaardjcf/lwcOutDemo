@@ -3,114 +3,393 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>StoreConnect POS Actions - Lightning Out</title> 
+  <title>LO2 End-to-End Debug</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 24px;
+      line-height: 1.4;
+    }
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    label {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 4px;
+      font-weight: 600;
+    }
+    input, select, button {
+      width: 100%;
+      padding: 10px 12px;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+    .actions {
+      display: flex;
+      gap: 12px;
+      margin: 12px 0 16px;
+      flex-wrap: wrap;
+    }
+    .actions button {
+      width: auto;
+      min-width: 160px;
+      cursor: pointer;
+    }
+    #status {
+      margin: 12px 0;
+      padding: 10px 12px;
+      border-radius: 6px;
+      background: #f5f5f5;
+      white-space: pre-wrap;
+    }
+    #status.error {
+      background: #fdecea;
+    }
+    #status.ok {
+      background: #edf7ed;
+    }
+    #app {
+      min-height: 120px;
+      margin: 12px 0 16px;
+    }
+    #debug {
+      background: #111;
+      color: #eee;
+      padding: 12px;
+      border-radius: 8px;
+      white-space: pre-wrap;
+      overflow: auto;
+      max-height: 420px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+    }
+    .hint {
+      color: #555;
+      margin-bottom: 12px;
+    }
+    code {
+      background: #f3f3f3;
+      padding: 2px 4px;
+      border-radius: 4px;
+    }
+  </style>
 </head>
 <body>
-  <h2>StoreConnect POS Actions - Lightning Out (Dynamic)</h2>
+  <h2>Lightning Out 2.0 End-to-End Debug</h2>
+  <p class="hint">
+    Use <code>?env=uat</code> or <code>?env=prod</code> in the URL, or change the selector below. This page fetches the real
+    frontdoor URL from Railway and prints the exact origin to whitelist in Salesforce.
+  </p>
 
-  <div id="status">Initializing...</div>
+  <div class="controls">
+    <div>
+      <label for="envSelect">Environment</label>
+      <select id="envSelect">
+        <option value="uat">UAT</option>
+        <option value="prod">Production</option>
+      </select>
+    </div>
+    <div>
+      <label for="railwayUrl">Railway API base URL</label>
+      <input id="railwayUrl" value="https://sc-auth-amart-production.up.railway.app" />
+    </div>
+    <div>
+      <label for="siteBaseUrl">Optional siteBaseUrl override</label>
+      <input id="siteBaseUrl" placeholder="https://...my.site.com/posactions/s" />
+    </div>
+    <div>
+      <label for="originField">Origin to whitelist in Salesforce</label>
+      <input id="originField" readonly />
+    </div>
+  </div>
+
+  <div class="actions">
+    <button id="runBtn" type="button">Run Debug Flow</button>
+    <button id="reloadBtn" type="button">Reload With Selected Env</button>
+  </div>
+
+  <div id="status">Ready. Click "Run Debug Flow" to start.</div>
   <div id="app"></div>
+  <pre id="debug"></pre>
 
   <script>
-    (async function () {
-      const params = new URLSearchParams(window.location.search);
-      const env = (params.get("env") || "uat").toLowerCase();
-
+    (function () {
       const CONFIG = {
         uat: {
-          orgUrl: "https://warranty2amartfurniture--amartuat.sandbox.my.salesforce.com",
-          appId: "1Us9n00000000mPCAQ"
+          scriptSrc: "https://warranty2amartfurniture--amartuat.sandbox.my.salesforce.com/lightning/lightning.out.latest/index.iife.prod.js",
+          appId: "1Us9n00000000mPCAQ",
+          componentName: "c-pos-actions-host-lo2"
         },
         prod: {
-          orgUrl: "https://warranty2amartfurniture.my.salesforce.com",
-          appId: "1UsW200000001TxKAI"
+          scriptSrc: "https://warranty2amartfurniture.my.salesforce.com/lightning/lightning.out.latest/index.iife.prod.js",
+          appId: "1UsW200000001TxKAI",
+          componentName: "c-pos-actions-host-lo2"
         }
       };
 
-      const cfg = CONFIG[env];
       const statusEl = document.getElementById("status");
+      const debugEl = document.getElementById("debug");
       const appEl = document.getElementById("app");
+      const envSelect = document.getElementById("envSelect");
+      const railwayUrlInput = document.getElementById("railwayUrl");
+      const originField = document.getElementById("originField");
+      const siteBaseUrlInput = document.getElementById("siteBaseUrl");
+      const runBtn = document.getElementById("runBtn");
+      const reloadBtn = document.getElementById("reloadBtn");
 
-      if (!cfg) {
-        statusEl.innerText = "Invalid env. Use ?env=uat or ?env=prod";
-        return;
+      const queryEnv = (new URLSearchParams(window.location.search).get("env") || "prod").toLowerCase();
+      envSelect.value = CONFIG[queryEnv] ? queryEnv : "prod";
+      originField.value = window.location.origin;
+
+      let activeRunId = 0;
+      let listenersRegistered = false;
+      let loadedScriptSrc = null;
+
+      function setStatus(message, kind) {
+        statusEl.textContent = message;
+        statusEl.className = kind || "";
       }
 
-      console.log("[TEST] env:", env);
-      console.log("[TEST] config:", cfg);
+      function log(title, value) {
+        const line = `[${new Date().toISOString()}] ${title}${value === undefined ? "" : `: ${typeof value === "string" ? value : JSON.stringify(value, null, 2)}`}`;
+        debugEl.textContent += (debugEl.textContent ? "\n" : "") + line;
+        console.log("[LO2 DEBUG]", title, value);
+      }
 
-      // Load LO2 script dynamically
-      const script = document.createElement("script");
-      script.src = cfg.orgUrl + "/lightning/lightning.out.latest/index.iife.prod.js";
-      script.async = true;
+      function clearDebug() {
+        debugEl.textContent = "";
+      }
 
-      script.onload = async () => {
-        console.log("[TEST] LO2 script loaded");
-
+      function maskUrl(url) {
         try {
-          statusEl.innerText = "Fetching frontdoor URL...";
+          const u = new URL(url);
+          if (u.searchParams.has("otp")) {
+            const otp = u.searchParams.get("otp") || "";
+            u.searchParams.set("otp", otp.slice(0, 12) + "...");
+          }
+          return u.toString();
+        } catch {
+          return url;
+        }
+      }
 
-          const resp = await fetch(
-            "https://sc-auth-amart-production.up.railway.app/api/lo2/frontdoor-site",
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ env })
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const existing = document.querySelector(`script[data-lo2-src="${src}"]`);
+          if (existing) {
+            if (window.customElements && window.customElements.get("lightning-out-application")) {
+              resolve();
+              return;
             }
-          );
-
-          const data = await resp.json();
-
-          console.log("[TEST] frontdoor response:", data);
-
-          if (!resp.ok || !data.frontdoorUrl) {
-            throw new Error(data.error || "Failed to get frontdoor URL");
+            existing.addEventListener("load", () => resolve(), { once: true });
+            existing.addEventListener("error", () => reject(new Error("Failed to load Lightning Out script.")), { once: true });
+            return;
           }
 
-          const frontdoorUrl = data.frontdoorUrl;
+          const script = document.createElement("script");
+          script.src = src;
+          script.async = true;
+          script.dataset.lo2Src = src;
+          script.onload = () => resolve();
+          script.onerror = () => reject(new Error(`Failed to load Lightning Out script: ${src}`));
+          document.head.appendChild(script);
+        });
+      }
 
-          statusEl.innerText = "Initializing Lightning Out...";
+      async function fetchFrontdoor(env) {
+        const base = railwayUrlInput.value.trim().replace(/\/+$/, "");
+        const url = `${base}/api/lo2/frontdoor-site`;
+        const siteBaseUrl = siteBaseUrlInput.value.trim();
+        const body = { env };
+        if (siteBaseUrl) {
+          body.siteBaseUrl = siteBaseUrl;
+        }
 
-          // Wait for custom element
+        log("window.location.origin", window.location.origin);
+        log("Whitelist this origin in Salesforce", window.location.origin);
+        log("Railway endpoint", url);
+        log("Railway request body", body);
+
+        const response = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+
+        const text = await response.text();
+        log("Railway raw response status", response.status);
+        log("Railway raw response body", text);
+
+        let data;
+        try {
+          data = JSON.parse(text);
+        } catch {
+          throw new Error(`Railway returned non-JSON response (${response.status}).`);
+        }
+
+        if (!response.ok) {
+          throw new Error(data.error || `Railway request failed with status ${response.status}.`);
+        }
+
+        if (!data.frontdoorUrl) {
+          throw new Error("Railway response did not include frontdoorUrl.");
+        }
+
+        log("frontdoorUrl", maskUrl(data.frontdoorUrl));
+        if (data.siteBaseUrl) {
+          log("siteBaseUrl", data.siteBaseUrl);
+        }
+        return data.frontdoorUrl;
+      }
+
+      function registerGlobalListeners() {
+        if (listenersRegistered) return;
+        listenersRegistered = true;
+
+        window.addEventListener("error", (event) => {
+          log("window.error", {
+            message: event.message,
+            filename: event.filename,
+            lineno: event.lineno,
+            colno: event.colno
+          });
+        });
+
+        window.addEventListener("unhandledrejection", (event) => {
+          log("window.unhandledrejection", String(event.reason));
+        });
+
+        window.addEventListener("message", (event) => {
+          log("postMessage", {
+            origin: event.origin,
+            dataType: typeof event.data,
+            data: typeof event.data === "string" ? event.data.slice(0, 500) : event.data
+          });
+        });
+      }
+
+      function createLo2Elements(config, frontdoorUrl) {
+        const lo2App = document.createElement("lightning-out-application");
+        lo2App.setAttribute("app-id", config.appId);
+        lo2App.setAttribute("components", config.componentName);
+        lo2App.setAttribute("frontdoor-url", frontdoorUrl);
+
+        const componentEl = document.createElement(config.componentName);
+        appEl.replaceChildren(lo2App, componentEl);
+
+        return { lo2App, componentEl };
+      }
+
+      async function run() {
+        const runId = ++activeRunId;
+        clearDebug();
+        appEl.replaceChildren();
+
+        const env = envSelect.value;
+        const config = CONFIG[env];
+        if (!config) {
+          setStatus("Invalid environment selected.", "error");
+          return;
+        }
+
+        if (loadedScriptSrc && loadedScriptSrc !== config.scriptSrc) {
+          setStatus("Environment changed after a Lightning Out script was already loaded. Use 'Reload With Selected Env' to switch environments safely.", "error");
+          log("Unsafe env switch blocked", {
+            loadedScriptSrc,
+            requestedScriptSrc: config.scriptSrc
+          });
+          return;
+        }
+
+        try {
+          registerGlobalListeners();
+          setStatus("Loading Lightning Out script...");
+          log("Selected env", env);
+          log("Selected config", { ...config, scriptSrc: config.scriptSrc });
+
+          await loadScript(config.scriptSrc);
+          loadedScriptSrc = config.scriptSrc;
+          if (runId !== activeRunId) return;
+
+          log("Script loaded", config.scriptSrc);
+          setStatus("Waiting for Lightning Out custom element...");
+
           await customElements.whenDefined("lightning-out-application");
+          if (runId !== activeRunId) return;
 
-          appEl.innerHTML = `
-            <lightning-out-application
-              app-id="${cfg.appId}"
-              frontdoor-url="${frontdoorUrl}"
-              components="c-pos-actions-host-lo2"
-            ></lightning-out-application>
-            <c-pos-actions-host-lo2></c-pos-actions-host-lo2>
-          `;
+          log("Custom element defined", "lightning-out-application");
+          setStatus("Fetching frontdoor URL from Railway...");
 
-          console.log("[TEST] LO2 injected");
+          const frontdoorUrl = await fetchFrontdoor(env);
+          if (runId !== activeRunId) return;
 
-          // Extra debugging
+          setStatus("Injecting Lightning Out application...");
+
+          const { lo2App, componentEl } = createLo2Elements(config, frontdoorUrl);
+
+          log("Injected appId", config.appId);
+          log("Injected componentName", config.componentName);
+          log("Component element created", !!componentEl);
+          log("document.cookie (immediate)", document.cookie || "<empty>");
+
+          if (!lo2App || !componentEl) {
+            throw new Error("Lightning Out elements were not created correctly.");
+          }
+
+          lo2App.addEventListener("applicationready", () => {
+            log("Event", "applicationready");
+            setStatus("Lightning Out application is ready.", "ok");
+          });
+
+          lo2App.addEventListener("applicationerror", (event) => {
+            const message = event?.detail?.message || "Unknown Lightning Out application error.";
+            log("Event applicationerror", {
+              message,
+              detail: event?.detail || null
+            });
+            setStatus(`Lightning Out application error: ${message}`, "error");
+          });
+
           setTimeout(() => {
-            console.log("[TEST] document.cookie:", document.cookie);
-
             const resources = performance.getEntriesByType("resource")
-              .filter(r => r.name.includes("my.site.com"));
-
-            console.log("[TEST] LWR resources:", resources.map(r => ({
-              name: r.name,
-              status: r.initiatorType
-            })));
+              .filter((r) => String(r.name).includes("salesforce.com") || String(r.name).includes("my.site.com") || String(r.name).includes("lightningout"))
+              .map((r) => ({
+                name: r.name,
+                initiatorType: r.initiatorType,
+                duration: Math.round(r.duration)
+              }));
+            log("document.cookie (delayed)", document.cookie || "<empty>");
+            log("Related resource timings", resources);
           }, 3000);
 
-          statusEl.innerText = "Loaded";
-
-        } catch (err) {
-          console.error("[TEST] ERROR:", err);
-          statusEl.innerText = "Error: " + err.message;
+          setStatus("Lightning Out injected. Waiting for application events...");
+        } catch (error) {
+          log("Run failed", error.message || String(error));
+          setStatus(`Error: ${error.message || error}`, "error");
         }
-      };
+      }
 
-      script.onerror = () => {
-        statusEl.innerText = "Failed to load LO2 script";
-      };
+      envSelect.addEventListener("change", () => {
+        const selectedEnv = envSelect.value;
+        const selectedConfig = CONFIG[selectedEnv];
+        if (loadedScriptSrc && selectedConfig && loadedScriptSrc !== selectedConfig.scriptSrc) {
+          setStatus("You changed environments. Click 'Reload With Selected Env' before running again.", "error");
+        }
+      });
 
-      document.head.appendChild(script);
+      runBtn.addEventListener("click", () => {
+        setStatus("Starting debug flow...");
+        run();
+      });
+      reloadBtn.addEventListener("click", () => {
+        const url = new URL(window.location.href);
+        url.searchParams.set("env", envSelect.value);
+        window.location.href = url.toString();
+      });
     })();
   </script>
 </body>
